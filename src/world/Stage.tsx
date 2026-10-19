@@ -78,7 +78,10 @@ export function Stage({ z, variant, index }: { z: number; variant: Variant; inde
   const py = narrow ? -vh0 / 2 + H / 2 - 0.15 : vh0 * 0.28 - H * 0.49
   const headX = px - W * 0.035
   const headTop = py + H * (narrow ? 0.43 : 0.49)
-  const textY = narrow ? vh0 * 0.33 * (textDist / CAM_DIST) : (py + H * 0.36) * (textDist / CAM_DIST)
+  // landscape phones (a frame under ~500px tall): the width-fitted headline would run into the hero copy, so it is
+  // capped to the upper part of the frame and set a little higher
+  const short = !narrow && size.height < 500 && aspect > 4 / 3
+  const textY = narrow ? vh0 * 0.33 * (textDist / CAM_DIST) : short ? vh0 * 0.2 * (textDist / CAM_DIST) : (py + H * 0.36) * (textDist / CAM_DIST)
   const gapWorld = W * 0.74 * (textDist / CAM_DIST)
 
   const portraitMat = useMemo(() => new THREE.ShaderMaterial({
@@ -175,6 +178,7 @@ export function Stage({ z, variant, index }: { z: number; variant: Variant; inde
           key={`${narrow}`}
           rows={variant === 'hero' ? (narrow ? HERO_ROWS_N : HERO_ROWS) : (narrow ? END_ROWS_N : END_ROWS)}
           mode={narrow ? 'stack' : 'split'}
+          maxScale={short ? (0.16 * vh0 * (textDist / CAM_DIST)) / 1.02 : 3}
           avail={vwText}
           fill={narrow ? (tablet ? 0.72 : 0.86) : 0.9}
           gap={narrow ? 0 : gapWorld}

@@ -3,6 +3,12 @@ import { SECTIONS, type ToolId } from './content'
 type Listener = () => void
 
 const mq = (q: string) => typeof window !== 'undefined' && window.matchMedia(q).matches
+/**
+ * The phone/portrait layout: portrait frames, and small screens that aren't landscape. A phone turned on its side
+ * (e.g. 667×375) is wide enough for the side-by-side layout, which the landscape rules in styles.css tighten; stacking
+ * it like a portrait phone left the scenes a sliver above the copy. Keep in step with the media queries in styles.css.
+ */
+export const NARROW_QUERY = '(max-aspect-ratio: 4/5), (max-width: 760px) and (max-aspect-ratio: 4/3)'
 
 // One mutable state object read by both the WebGL world and the DOM layer every frame.
 export const S = {
@@ -15,7 +21,7 @@ export const S = {
   pinTool: null as ToolId | null,
   hoverLayer: -1,
   atmos: -1,
-  narrow: mq('(max-aspect-ratio: 4/5)') || mq('(max-width: 760px)'),
+  narrow: mq(NARROW_QUERY),
   touch: mq('(hover: none)'),
   reduced: mq('(prefers-reduced-motion: reduce)'),
   low: false, // set when performance drops

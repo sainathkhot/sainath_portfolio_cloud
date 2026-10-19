@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { World } from './world/World'
 import { Overlay, Nav } from './ui/Overlay'
 import { startMotion } from './ui/scroll'
-import { S, markWorldReady } from './store'
+import { S, markWorldReady, NARROW_QUERY } from './store'
 import { FOV, CAM_DIST } from './world/Stage'
 
 function hasWebGL() {
@@ -28,7 +28,7 @@ export function App() {
   useEffect(() => { if (!gl) markWorldReady() }, [gl])
   // recompose the world when the frame changes between landscape and portrait
   useEffect(() => {
-    const mq = window.matchMedia('(max-aspect-ratio: 4/5), (max-width: 760px)')
+    const mq = window.matchMedia(NARROW_QUERY)
     const on = () => { S.narrow = mq.matches; setLayoutKey((k) => k + 1) }
     mq.addEventListener('change', on)
     return () => mq.removeEventListener('change', on)
