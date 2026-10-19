@@ -100,6 +100,17 @@ export function startMotion() {
   }
 
   onResolveActive(alsoBuilt)
+
+  // keyboard: Tab into a frame that isn't on screen (the toolkit index, the Also Built rows, the contact links...)
+  // and the film jumps to where that frame is fully shown, so the focused control is visible
+  on('focusin', (e) => {
+    const fr = frames.find((f) => f.el.contains(e.target as Node))
+    if (!fr || Number(fr.el.style.opacity || 0) > 0.5) return
+    const [, b, c] = fr.f
+    const y = yForFilm(fr.sec + (b + c) / 2)
+    if (lenis) lenis.scrollTo(y, { immediate: true, force: true }); else window.scrollTo(0, y)
+    S.snap = true
+  })
   const tick = () => {
     const s = S.ready ? S.s : filmFromScroll(window.scrollY)
     for (const fr of frames) {
@@ -107,10 +118,10 @@ export function startMotion() {
       const [a, b, c, d] = fr.f
       const o = sstep(a, b, p) * (1 - sstep(c, d, p))
       const y = (1 - sstep(a, b, p)) * 26 - sstep(c, d, p) * 26
-      const vis = o >= 0.005
       fr.el.style.opacity = o.toFixed(3)
       fr.el.style.transform = `translate3d(0, ${y.toFixed(1)}px, 0)`
-      if ((fr.el.style.visibility !== 'hidden') !== vis) fr.el.style.visibility = vis ? 'visible' : 'hidden'
+      // frames that aren't showing are transparent but stay in the tab order (they take no pointer: see .is-live),
+      // so a keyboard user can Tab on into the next section; focusing inside one brings the film there (focusin below)
       const live = o > 0.55
       if (fr.el.classList.contains('is-live') !== live) fr.el.classList.toggle('is-live', live)
     }
