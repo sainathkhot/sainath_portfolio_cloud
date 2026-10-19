@@ -215,22 +215,24 @@ export function EParking() {
         <group position={[1.32, 0.2, -1.78]}>
           <mesh geometry={geo.booth}><meshStandardMaterial color="#F3F3EC" roughness={0.55} /></mesh>
           <mesh position={[0, 0.6, 0]}><boxGeometry args={[0.72, 0.06, 0.6]} /><meshStandardMaterial color="#1d2c33" roughness={0.5} /></mesh>
-          <mesh position={[0, 0.2, 0.252]}>
+          <mesh position={[0, 0.2, 0.256]}>
             <planeGeometry args={[0.42, 0.26]} />
             <meshStandardMaterial ref={screenMat} color="#16252c" emissive="#9CD3E3" emissiveIntensity={0.08} roughness={0.3} />
           </mesh>
-          <mesh position={[0, -0.12, 0.252]}><planeGeometry args={[0.16, 0.025]} /><meshStandardMaterial color="#122027" /></mesh>
+          <mesh position={[0, -0.12, 0.256]}><planeGeometry args={[0.16, 0.025]} /><meshStandardMaterial color="#122027" /></mesh>
         </group>
         <group position={[0.82, 0.38, -1.5]} rotation={[-0.5, 0.25, 0]}>
           <mesh><boxGeometry args={[0.14, 0.03, 0.22]} /><meshStandardMaterial color="#1d2c33" roughness={0.4} /></mesh>
-          <mesh position={[0, 0.017, -0.03]} rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh position={[0, 0.02, -0.03]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[0.1, 0.11]} />
             <meshStandardMaterial ref={posMat} color="#16252c" emissive="#F28A28" emissiveIntensity={0} />
           </mesh>
         </group>
         <pointLight ref={glow} position={[1.2, 0.9, -0.9]} color="#ffb05a" distance={4.5} decay={1.6} intensity={0} />
-        <group position={[1.95, -0.06, -1.28]}>
-          <mesh><boxGeometry args={[0.22, 0.86, 0.22]} /><meshStandardMaterial color="#1d2c33" roughness={0.5} /></mesh>
+        {/* The barrier post stands on the island, set back from its front face. It used to share that face exactly
+            (both at z −1.17), so the two surfaces fought for the same depth and the post's base flickered. */}
+        <group position={[1.95, -0.06, -1.36]}>
+          <mesh position={[0, 0.075, 0]}><boxGeometry args={[0.22, 0.71, 0.22]} /><meshStandardMaterial color="#1d2c33" roughness={0.5} /></mesh>
           <group ref={arm} position={[0, 0.34, 0]}>
             <mesh position={[0, 0, 1.18]} rotation={[0, Math.PI / 2, 0]}>
               <boxGeometry args={[2.36, 0.06, 0.06]} />
