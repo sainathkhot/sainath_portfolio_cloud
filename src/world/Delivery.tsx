@@ -25,6 +25,11 @@ const EAGLE_GLB: string | null = Object.values(found)[0] ?? null
 const GLB_YAW = 0
 
 const REC = 9 // record section index
+/**
+ * Aircraft size multiplier, applied to every pass. 1 restores the original size recorded in
+ * docs/portfolio-visual-baseline.md (per-pass `craft` values in layout() are the baseline numbers).
+ */
+const CRAFT_SIZE = 1.1
 const Z = -156 // banner plane
 // banner sizes (top rod centre is the origin). The second banner carries more text, so it is a little wider and
 // taller than the first; phones get a narrower, taller cloth so the type can stay large
@@ -444,7 +449,7 @@ export function Delivery() {
   const L = useMemo(() => layout(narrow, aspect), [narrow, aspect])
   const glb = useGlbEagle()
   const isEagle = !!glb
-  const crafts = useMemo(() => L.craft.map((c) => (isEagle ? c * 1.1 : c)), [L, isEagle])
+  const crafts = useMemo(() => L.craft.map((c) => c * CRAFT_SIZE * (isEagle ? 1.1 : 1)), [L, isEagle])
   const rel = useMemo(() => [0, 1].map((i) => releaseU(L.paths[i], L.release[i], crafts[i], isEagle, L.drop[i])), [L, crafts, isEagle])
   const craft = useMemo(buildCraft, [])
   useEffect(() => () => craft.dispose(), [craft])
