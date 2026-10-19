@@ -65,6 +65,31 @@ similar apparent size. With a licensed `eagle.glb` present, both values are mult
 Measured from rendered 1440×900 screenshots of the baseline build: the first pass reads about 150 px nose to tail as
 it crosses the frame; the second pass about 70% of that, since it flies farther back.
 
+### Values after the enlargement (`CRAFT_SIZE = 1.1`)
+
+| Layout | Pass 1 `craft` | Pass 2 `craft` |
+| --- | --- | --- |
+| Wide screens | 1.2 → **1.32** | 1.4 → **1.54** |
+| Phones | 0.7 → **0.77** | 0.29 → **0.319** |
+
+With `eagle.glb` present the eagle factor (×1.1) still applies on top. Paths, timing, banner sizes and the
+release/settle choreography are unchanged; tow length, drop, lift and rope scale with the craft as before.
+
+Checked on the built site by reading the carrier group's scale from the scene (`?debug`) and projecting the
+aircraft's bounds to the screen, baseline build vs branch build, at the same scroll positions:
+
+| Viewport | Position | Scale (before → after) | On-screen diagonal, px (before → after) |
+| --- | --- | --- | --- |
+| 1440×900 | s 9.25 (pass 1) | 1.2 → 1.32 | 270 → 293 |
+| 1440×900 | s 9.6 (pass 2) | 1.4 → 1.54 | 184 → 204 |
+| 900×600 | s 9.25 (pass 1) | 1.2 → 1.32 | 179 → 198 |
+| 900×600 | s 9.6 (pass 2) | 1.4 → 1.54 | 123 → 137 |
+| 390×844 | s 9.25 (pass 1) | 0.7 → 0.77 | 137 → 154 |
+| 390×844 | s 9.6 (pass 2) | 0.29 → 0.319 | 126 → 138 |
+
+The diagonal is the projected bounding box, so it also moves a little with the aircraft's bank and heading at that
+instant; the scale column is the exact change.
+
 ### How to restore the original size
 
 The enlargement is applied by one multiplier, `CRAFT_SIZE`, in `src/world/Delivery.tsx`. Set it back to `1` to
