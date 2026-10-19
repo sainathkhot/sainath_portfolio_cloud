@@ -133,9 +133,10 @@ export function Film() {
     // phones: the copy owns the lower half, so the projects are lifted into the upper half the same way
     const wProj = sstep(1.9, 2.04, s) * (1 - sstep(6.9, 6.99, s))
     const wOff = S.narrow ? 0 : wProj
-    const wTk = S.narrow ? 0 : sstep(7.02, 7.12, s) * (1 - sstep(7.9, 7.98, s))
+    const wTkAll = sstep(7.02, 7.12, s) * (1 - sstep(7.9, 7.98, s))
     const offX = -(edge.current / 2) * wOff
-    const offY = S.narrow ? size.height * 0.25 * wProj : band.current * wTk
+    // the toolkit centres its bench in the band between its title and its index on every screen, phones included
+    const offY = (S.narrow ? size.height * 0.25 * wProj : 0) + band.current * wTkAll
     if (Math.abs(offX) > 0.5 || Math.abs(offY) > 0.5) cam.setViewOffset(size.width, size.height, offX, offY, size.width, size.height)
     else if (cam.view?.enabled) cam.clearViewOffset()
     // phones: the formations are small, so damp the camera's sideways drift to keep them in frame
@@ -143,10 +144,12 @@ export function Film() {
       const k = 1 - 0.6 * sstep(1.9, 2.0, s) * (1 - sstep(6.9, 7.0, s))
       pos.x *= k; tgt.x *= k
     }
-    // phones: pull back on the workbench so the title keeps the top of the frame
+    // phones: pull back on the workbench so the four rows fit. No vertical shift here: the band offset above
+    // already centres the bench between the title and the index (a lift on top of it pushed the last row
+    // into the "Tap a material" line).
     if (S.narrow) {
       const w = sstep(7.04, 7.14, s) * (1 - sstep(7.86, 7.96, s))
-      pos.z += 3.2 * w; pos.y += 0.9 * w; tgt.y += 0.9 * w
+      pos.z += 3.2 * w
     }
     // pointer parallax: stronger on the portrait stages, calmer elsewhere
     const stage = Math.max(1 - s / 0.6, s > 10.2 ? 1 : 0)

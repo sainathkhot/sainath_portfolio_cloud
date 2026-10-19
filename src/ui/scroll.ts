@@ -130,7 +130,9 @@ export function startMotion() {
       }
     })
     // ink over bright air (about, the top-down project shots, everything after the toolkit); white over blue sky
-    const tone = (s > 0.9 && s < 1.92) || (s > 2.95 && s < 5.0) || s > 7.92 ? 'ink' : 'light'
+    // phones and portrait tablets frame every scene against the pale cloud bed, so past the hero the bar is always ink
+    const tone = S.narrow ? (s > 0.9 ? 'ink' : 'light')
+      : (s > 0.9 && s < 1.92) || (s > 2.95 && s < 5.0) || s > 7.92 ? 'ink' : 'light'
     if (document.documentElement.dataset.tone !== tone) document.documentElement.dataset.tone = tone
     const act = ACTIVE.find(([, a, b]) => s >= a && s < b)?.[0] ?? ''
     if (act !== lastActive) {

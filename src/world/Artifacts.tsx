@@ -160,10 +160,12 @@ export function HeroArtifacts({ narrow }: { narrow: boolean }) {
   if (narrow) {
     return (
       <group>
-        <Floater pos={[-1.05, 0.4, -2.0]} rot={[1.2, 0.3, 0]} depth={0.3} phase={5.3} scale={0.55}>
+        {/* placed by fraction of the frame width at their depth, so they stay inside the frame on any phone or tablet */}
+        {/* tablets: the headline runs down to mid-frame, so the token sits low and right, clear of it */}
+        <Floater pos={[X(aspect > 0.6 ? 0.72 : -0.7, -2.0, 0), aspect > 0.6 ? -1.2 : 0.4, -2.0]} rot={[1.2, 0.3, 0]} depth={0.3} phase={5.3} scale={0.55}>
           <BrassToken />
         </Floater>
-        <Floater pos={[-0.98, -0.8, 0.6]} rot={[-0.2, 0.5, -0.1]} depth={0.6} phase={2.9} scale={0.42}>
+        <Floater pos={[X(-0.66, 0.6, 0), -0.8, 0.6]} rot={[-0.2, 0.5, -0.1]} depth={0.6} phase={2.9} scale={0.42}>
           <mesh>
             <boxGeometry args={[1.6, 1.0, 0.04]} />
             <meshPhysicalMaterial map={glass} transparent opacity={0.92} roughness={0.08} metalness={0} clearcoat={1} clearcoatRoughness={0.05} color="#e9f7fc" />

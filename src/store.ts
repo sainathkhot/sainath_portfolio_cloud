@@ -103,6 +103,6 @@ export function toolkitBand() {
   const h = document.querySelector('.tk__head')?.getBoundingClientRect()
   const f = document.querySelector('.tk__foot')?.getBoundingClientRect()
   const H = window.innerHeight
-  if (!h || !f || S.narrow) return { top: 0, bottom: H, H }
+  if (!h || !f) return { top: 0, bottom: H, H }
   return { top: h.bottom + 8, bottom: f.top - 8, H }
 }

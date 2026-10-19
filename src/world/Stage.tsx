@@ -65,12 +65,12 @@ export function Stage({ z, variant, index }: { z: number; variant: Variant; inde
   const vwText = vw0 * (textDist / CAM_DIST)
   const end = variant === 'contact'
   // closing frame: a slightly smaller figure that balances the text group rather than headlining the frame
-  const H = narrow ? vh0 * (end ? 0.47 : 0.6) : vh0 * (end ? 0.9 : 0.98)
+  const H = narrow ? vh0 * (end ? (aspect > 0.6 ? 0.58 : 0.47) : 0.6) : vh0 * (end ? 0.9 : 0.98)
   const W = H * IMG_ASPECT
 
   const [gapX, setGapX] = useState(0)
   // hero: the figure stands in the gap of the split headline. closing: it stands in the right third, beside the text
-  const px = end ? vw0 * (narrow ? 0.1 : 0.27) : narrow ? vw0 * 0.14 : gapX * (CAM_DIST / textDist)
+  const px = end ? vw0 * (narrow ? (aspect > 0.6 ? 0.2 : 0.1) : 0.27) : narrow ? vw0 * 0.14 : gapX * (CAM_DIST / textDist)
   // desktop: crown of the head sits ~22% down the frame; phone: figure stands at the bottom edge
   const py = narrow ? -vh0 / 2 + H / 2 - 0.15 : vh0 * 0.28 - H * 0.49
   const headX = px - W * 0.035

@@ -43,10 +43,16 @@ export function Workbench() {
   // fit the bench to the frame width; the layout spans ~11.6 units, centred 0.6 right
   // ...and to the free band between title and readout (the bench is ~5.6 units tall)
   const fit = useMemo(() => {
-    if (S.narrow) return 1
+    const b = toolkitBand()
+    if (S.narrow) {
+      // phones: four rows of three (~3.4 wide, ~5 tall with labels), seen from ~14.7 away
+      const visH = 2 * 14.7 * Math.tan(THREE.MathUtils.degToRad(FOV / 2))
+      const visW = visH * (size.width / size.height)
+      const fitH = ((b.bottom - b.top) / b.H) * visH / 5.0
+      return Math.min(1.25, Math.max(0.6, Math.min((visW * 0.92) / 3.4, fitH)))
+    }
     const visH = 2 * 11.5 * Math.tan(THREE.MathUtils.degToRad(FOV / 2))
     const visW = visH * (size.width / size.height)
-    const b = toolkitBand()
     const fitH = ((b.bottom - b.top) / b.H) * visH / 7.4
     return Math.min(1, Math.max(0.5, Math.min((visW * 0.92) / 10.4, fitH)))
   }, [size.width, size.height])
