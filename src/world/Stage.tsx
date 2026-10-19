@@ -65,7 +65,10 @@ export function Stage({ z, variant, index }: { z: number; variant: Variant; inde
   const vwText = vw0 * (textDist / CAM_DIST)
   const end = variant === 'contact'
   // closing frame: a slightly smaller figure that balances the text group rather than headlining the frame
-  const H = narrow ? vh0 * (end ? (aspect > 0.6 ? 0.58 : 0.47) : 0.6) : vh0 * (end ? 0.9 : 0.98)
+  // portrait tablets (aspect > 0.6): the width-fitted headline runs deeper down the frame, so the hero figure stands a
+  // little smaller and the headline fills less of the width, keeping "reality." clear of the head cloud
+  const tablet = narrow && aspect > 0.6
+  const H = narrow ? vh0 * (end ? (tablet ? 0.58 : 0.47) : tablet ? 0.52 : 0.6) : vh0 * (end ? 0.9 : 0.98)
   const W = H * IMG_ASPECT
 
   const [gapX, setGapX] = useState(0)
@@ -173,7 +176,7 @@ export function Stage({ z, variant, index }: { z: number; variant: Variant; inde
           rows={variant === 'hero' ? (narrow ? HERO_ROWS_N : HERO_ROWS) : (narrow ? END_ROWS_N : END_ROWS)}
           mode={narrow ? 'stack' : 'split'}
           avail={vwText}
-          fill={narrow ? 0.86 : 0.9}
+          fill={narrow ? (tablet ? 0.72 : 0.86) : 0.9}
           gap={narrow ? 0 : gapWorld}
           lineHeight={narrow ? 0.98 : 1.02}
           color={textColor}
