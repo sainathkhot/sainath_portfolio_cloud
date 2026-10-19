@@ -210,7 +210,8 @@ export function Overlay() {
               {'note' in p && <p className="work__note">{p.note}</p>}
               <p className="work__stack">{p.stack}</p>
             </div>
-            <div className="state" aria-hidden="true"><i /><span data-status={i}>&nbsp;</span></div>
+            {/* the live state line narrates the 3D scene, so there is nothing to show without WebGL */}
+            {!S.noGL && <div className="state" aria-hidden="true"><i /><span data-status={i}>&nbsp;</span></div>}
             {p.id === 'p2' && <p className="hint">{S.touch ? 'Layers light as the question passes' : 'Hover a layer to lift it'}</p>}
           </div>
         </section>
