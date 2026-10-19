@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useRef } from 'react'
-import { S, bump, damp, sstep, filmFromScroll, copyEdge, toolkitBand } from '../store'
+import { S, bump, damp, sstep, filmFromScroll, copyEdge, toolkitBand, workBands, clamp, lerp } from '../store'
 import { cloudShared } from './Cloud'
 import { skyU, veilU } from './Sky'
 import { CAM_DIST } from './Stage'
@@ -101,10 +101,13 @@ export function Film() {
       edge.current = copyEdge()
       const b = toolkitBand()
       band.current = b.H / 2 - (b.top + b.bottom) / 2
+      S.workBands = workBands()
     }
     read()
     const id = window.setTimeout(read, 400) // after fonts settle
-    return () => window.clearTimeout(id)
+    let live = true
+    document.fonts?.ready.then(() => { if (live) read() }) // copy re-wraps once the web fonts arrive
+    return () => { live = false; window.clearTimeout(id) }
   }, [size.width, size.height])
   const pos = useRef(new THREE.Vector3()).current
   const tgt = useRef(new THREE.Vector3()).current
@@ -136,7 +139,7 @@ export function Film() {
     const wTkAll = sstep(7.02, 7.12, s) * (1 - sstep(7.9, 7.98, s))
     const offX = -(edge.current / 2) * wOff
     // the toolkit centres its bench in the band between its title and its index on every screen, phones included
-    const offY = (S.narrow ? size.height * 0.25 * wProj : 0) + band.current * wTkAll
+    const offY = (S.narrow ? phoneLift(s, size.height) * wProj : 0) + band.current * wTkAll
     if (Math.abs(offX) > 0.5 || Math.abs(offY) > 0.5) cam.setViewOffset(size.width, size.height, offX, offY, size.width, size.height)
     else if (cam.view?.enabled) cam.clearViewOffset()
     // phones: the formations are small, so damp the camera's sideways drift to keep them in frame
@@ -188,4 +191,17 @@ export function Film() {
     cloudShared.uSunView.value.copy(CLOUD_KEY).transformDirection(camera.matrixWorldInverse)
   }, -1)
   return null
+}
+
+/**
+ * Phones: how far (px) to lift the project scenes. At least a quarter of the frame, which centres a scene in the upper
+ * half; more when a project's copy runs long and leaves less room above it, so the scene sits in the free band
+ * instead of on the text. Blends between neighbouring projects as the formations change.
+ */
+function phoneLift(s: number, H: number) {
+  const b = S.workBands, base = H * 0.25
+  if (b.length < 5) return base
+  const at = (k: number) => { const c = b[Math.max(0, Math.min(4, k))]; return Math.max(base, H / 2 - (c.top + c.bottom) / 2) }
+  const x = clamp(s - 2, 0, 5), j = Math.round(x)
+  return lerp(at(j - 1), at(j), sstep(j - 0.1, j + 0.1, x))
 }

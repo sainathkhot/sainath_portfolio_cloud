@@ -27,6 +27,7 @@ export const S = {
   specHover: -1,  // 'Also built' 3D object under the pointer
   atmosPin: -1,   // touch: tapped project
   px0: -1, py0: -1, // last pointer position in client px
+  workBands: [] as { top: number; bottom: number; H: number }[], // phones: free band above each project's copy (px)
 }
 
 const listeners = new Set<Listener>()
@@ -96,6 +97,21 @@ const readyP = new Promise<void>((r) => { readyResolve = r })
 export function markWorldReady() { readyResolve?.(); readyResolve = null }
 export function whenWorldReady(timeoutMs: number) {
   return Promise.race([readyP, new Promise<void>((r) => window.setTimeout(r, timeoutMs))])
+}
+
+/**
+ * Phones: the free band (px) above each project's copy, from under the nav to the copy's first line. The copy is
+ * anchored to the bottom of the frame, so a project with longer copy leaves its scene less room.
+ * Measured against the frame rather than the viewport, so a frame mid-fade doesn't skew it.
+ */
+export function workBands() {
+  const H = window.innerHeight
+  const nav = document.querySelector('.nav')?.getBoundingClientRect()
+  const top = (nav ? nav.bottom : 56) + 8
+  return [...document.querySelectorAll('.frame--work .work')].map((w) => {
+    const c = w.firstElementChild?.getBoundingClientRect(), f = w.closest('.frame')?.getBoundingClientRect()
+    return { top, bottom: c && f ? c.top - f.top - 10 : H * 0.5, H }
+  })
 }
 
 /** free vertical band (px) between the toolkit title and its readout, where the bench should sit */

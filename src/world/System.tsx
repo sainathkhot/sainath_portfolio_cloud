@@ -7,7 +7,7 @@ import { S, sstep, local, damp, hash, clamp, lerp, copyEdge } from '../store'
 import { FOV } from './Stage'
 import { CloudField, cumulus, cloudSea } from './Cloud'
 import { FONTS } from '../lib/fonts'
-import { Ship, shipMatrix, shipStages, routePoint, linkLit, scanX, beam as hullBeam, GRID_X, GRID_Y, GRID_Z, TARGET_XZ, C_OK } from './Ship'
+import { Ship, shipFit, shipMatrix, shipStages, routePoint, linkLit, scanX, beam as hullBeam, GRID_X, GRID_Y, GRID_Z, TARGET_XZ, C_OK } from './Ship'
 
 export const SYS_Z = -60
 const TAU = Math.PI * 2
@@ -108,7 +108,7 @@ export function System() {
 
   const status = (i: number, t: string) => { if (S.status[i] !== t) S.status[i] = t }
 
-  useFrame(({ clock }, dtRaw) => {
+  useFrame(({ clock, size }, dtRaw) => {
     const dt = Math.min(dtRaw, 0.05)
     const s = S.s
     const on = s > 1.82 && s < 6.25
@@ -206,7 +206,7 @@ export function System() {
 
     // Blue Marine: the ship's pose and the application's progress, shared with Ship.tsx
     const bm = shipStages(d), bmLit = linkLit(bm), bmScan = scanX(bm)
-    if (from === 3 || to === 3) shipMatrix(clock.elapsedTime, shipM)
+    if (from === 3 || to === 3) shipMatrix(clock.elapsedTime, shipM, shipFit(sysScale, size.height))
 
     const mesh = inst.current
     for (let i = 0; i < toks.length; i++) {
@@ -386,7 +386,7 @@ export function System() {
 
         {/* D — Blue Marine: a container ship under the permit platform's network */}
         <group ref={gD}>
-          <Ship setStatus={(t) => status(3, t)} />
+          <Ship setStatus={(t) => status(3, t)} sysScale={sysScale} />
         </group>
       </group>
     </group>

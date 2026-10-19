@@ -6,6 +6,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { S, sstep, local, clamp, hash } from '../store'
 import { FONTS } from '../lib/fonts'
 import { CloudField, cumulus } from './Cloud'
+import { FOV } from './Stage'
 
 /*
  * Blue Marine — Government Import Permit & Licensing Platform.
@@ -133,7 +134,7 @@ function corrugation() {
 // staggered in height and depth so that, with the ship turned toward the camera, no two labels overlap
 const NODES = [
   { name: 'IMPORTER', p: new THREE.Vector3(3.15, 2.0, 0.35) },
-  { name: 'DIRECTOR', p: new THREE.Vector3(1.2, 2.95, -0.3) },
+  { name: 'DIRECTOR', p: new THREE.Vector3(1.2, 3.25, -0.3) },
   { name: 'ASSISTANT\nDIRECTOR', p: new THREE.Vector3(-0.7, 2.15, -0.35) },
   { name: 'PRINCIPAL\nOFFICER', p: new THREE.Vector3(-2.7, 2.8, 0.4) },
 ]
@@ -187,13 +188,27 @@ export function routePoint(u: number, out: THREE.Vector3) {
   return LINKS[k].getPoint(u * 3 - k, out)
 }
 
+/** ship + network height in ship units, keel to the top of the highest label (phones) */
+const CONTENT_H = 4.9, CONTENT_MID = 1.45
+/**
+ * The ship's scale. Phones: sized to the free band above Blue Marine's copy (measured, see workBands), between 0.8 and
+ * 1.1, so a short phone or a long copy block doesn't put the hull on the text. Wide screens: 1.1.
+ */
+export function shipFit(sysScale: number, H: number) {
+  const b = S.workBands[3]
+  if (!S.narrow || !b) return 1.1
+  const pxPerUnit = (sysScale * H) / (2 * 13.1 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)))
+  return clamp((b.bottom - b.top - 12) / (CONTENT_H * pxPerUnit), 0.8, 1.1)
+}
+
 const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3()
 /**
  * The ship's pose inside the system group (shared with the token formation, which rides over the cargo).
  * It sails in from the left as the scene arrives, makes slow headway through the section, and sails on into the
- * cloud as the scene leaves.
+ * cloud as the scene leaves. Phones centre the ship and its network on the lens (the camera lifts the scene into the
+ * free band above the copy).
  */
-export function shipMatrix(time: number, out: THREE.Matrix4) {
+export function shipMatrix(time: number, out: THREE.Matrix4, fit = 1.1) {
   const s = S.s, d = local(SECTION)
   const narrow = S.narrow
   const sway = S.reduced ? 0 : 1
@@ -201,10 +216,9 @@ export function shipMatrix(time: number, out: THREE.Matrix4) {
   // phones: the ship sits higher and a little smaller so the whole hull, bridge to bow, stays in the upper half
   const yaw = narrow ? -0.55 : -0.5
   const run = (d - 0.5) * 1.1 - (1 - enter) * 7 + leave * 4
-  _p.set((narrow ? -0.3 : 0.05) + Math.cos(yaw) * run, (narrow ? -0.45 : -1.55) + 0.04 * Math.sin(time * 0.7) * sway - leave * 1.6, -0.4 - Math.sin(yaw) * run)
+  _p.set((narrow ? -0.3 * fit / 1.1 : 0.05) + Math.cos(yaw) * run, (narrow ? -CONTENT_MID * fit : -1.55) + 0.04 * Math.sin(time * 0.7) * sway - leave * 1.6, -0.4 - Math.sin(yaw) * run)
   _q.setFromEuler(_e.set(0.018 * Math.sin(time * 0.5) * sway, yaw, 0.025 * Math.sin(time * 0.62 + 1) * sway + leave * 0.06, 'YXZ'))
-  const sc = 1.1
-  return out.compose(_p, _q, _s.set(sc, sc, sc))
+  return out.compose(_p, _q, _s.set(fit, fit, fit))
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -218,7 +232,7 @@ function dashedSegment(a: THREE.Vector3, b: THREE.Vector3) {
   return g
 }
 
-export function Ship({ setStatus }: { setStatus: (t: string) => void }) {
+export function Ship({ setStatus, sysScale }: { setStatus: (t: string) => void; sysScale: number }) {
   const hull = useMemo(hullGeometry, [])
   const tex = useMemo(corrugation, [])
   const ship = useRef<THREE.Group>(null!)
@@ -234,6 +248,7 @@ export function Ship({ setStatus }: { setStatus: (t: string) => void }) {
   const outline = useRef<THREE.LineSegments>(null!)
   const badge = useRef<THREE.Group>(null!)
   const radar = useRef<THREE.Mesh>(null!)
+  const labels = useRef<THREE.Object3D[]>([])
   const m4 = useMemo(() => new THREE.Matrix4(), [])
   const geo = useMemo(() => {
     const top = TGT_TOP.clone().add(new THREE.Vector3(0, 0.03, 0))
@@ -266,11 +281,16 @@ export function Ship({ setStatus }: { setStatus: (t: string) => void }) {
     m.userData.filled = true
   }
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock, size }) => {
     const d = local(SECTION)
     const time = S.reduced ? 0 : clock.elapsedTime
     const st = shipStages(d)
-    shipMatrix(clock.elapsedTime, m4)
+    const fit = shipFit(sysScale, size.height)
+    shipMatrix(clock.elapsedTime, m4, fit)
+    // labels and the permit tag keep most of their on-screen size when a phone shrinks the ship
+    // (not all of it: the offices also move closer together, and full-size labels would touch)
+    const keep = (1.1 / fit) ** 0.75
+    labels.current.forEach((l) => l && l.scale.setScalar(keep))
     m4.decompose(ship.current.position, ship.current.quaternion, ship.current.scale)
     radar.current.rotation.y = time * 2.2
     // the overlay lifts off and thins as the scene leaves
@@ -334,7 +354,7 @@ export function Ship({ setStatus }: { setStatus: (t: string) => void }) {
     // the permit badge rises over the cleared container
     const bg = badge.current
     bg.visible = st.permit > 0.01
-    bg.scale.setScalar(Math.max(0.001, st.permit) * (S.narrow ? 1.6 : 1))
+    bg.scale.setScalar(Math.max(0.001, st.permit) * (S.narrow ? 1.6 : 1) * keep)
     bg.position.set(TGT_TOP.x, TGT_TOP.y + 0.35 + 0.4 * st.permit, TGT_TOP.z)
 
     setStatus(
@@ -405,7 +425,7 @@ export function Ship({ setStatus }: { setStatus: (t: string) => void }) {
                 <ringGeometry args={[0.15, 0.175, 48]} />
                 <meshBasicMaterial color="#5A747C" transparent opacity={0.9} depthWrite={false} side={THREE.DoubleSide} />
               </mesh>
-              <Text font={FONTS.mono} fontSize={labelSize} lineHeight={1.15} letterSpacing={0.08} color="#122027"
+              <Text ref={(el: THREE.Object3D | null) => { if (el) labels.current[k] = el }} font={FONTS.mono} fontSize={labelSize} lineHeight={1.15} letterSpacing={0.08} color="#122027"
                 outlineWidth={labelSize * 0.12} outlineColor="#f3f6f6" anchorX="center" anchorY="bottom" textAlign="center" position={[0, 0.25, 0]}>
                 {n.name}
               </Text>
