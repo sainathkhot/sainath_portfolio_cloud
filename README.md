@@ -56,10 +56,13 @@ change copy; the scenes read their labels from it where they show any.
 | `src/world/Cloud.tsx` | Procedural billboard cumulus; noise from a texture baked once on the GPU (`src/lib/glsl.ts`) |
 | `src/world/Stage.tsx` | Portrait, split headline around the figure, the head cloud (opening) and parted clouds (closing) |
 | `src/world/System.tsx` | One instanced set of tokens that morphs through the first four projects |
+| `src/world/Ship.tsx` | Blue Marine: a container ship sailing through the cloud sea under a live network of the permit platform (importer → director → AD → PO, send-back path, scan, inspection, permit issued) |
 | `src/world/EParking.tsx` | The gate scene: vehicle, ANPR camera, booth, POS, barrier, and the identify → access path |
 | `src/world/Workbench.tsx` | Twelve tool objects on a three-row grid; hover, tap or the index wakes related tools |
 | `src/world/Specimens.tsx` | One object per "Also built" project; hovering the row or the object selects the same project |
 | `src/world/Delivery.tsx` | Recognition & delivery: the aircraft's two passes, banner release, unfurl and settle, all driven by scroll |
+| `src/world/Aircraft.ts` | The procedural light aircraft (lofted fuselage, wing and tail; painted livery) |
+| `docs/portfolio-visual-baseline.md` | Recorded original values (e.g. the aircraft's size) so visual changes can be undone exactly |
 | `src/ui/Overlay.tsx` | All page content and section frames |
 | `src/ui/scroll.ts` | Lenis, frame fades, the Also Built hover controller, status lines, cursor, nav state |
 

@@ -212,9 +212,6 @@ export function Overlay() {
             </div>
             <div className="state" aria-hidden="true"><i /><span data-status={i}>&nbsp;</span></div>
             {p.id === 'p2' && <p className="hint">{S.touch ? 'Layers light as the question passes' : 'Hover a layer to lift it'}</p>}
-            {p.id === 'p4' && (
-              <p className="legend"><span className="legend__fwd">Active route</span><span className="legend__back">Send-back · escalation</span></p>
-            )}
           </div>
         </section>
       ))}

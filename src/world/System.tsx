@@ -7,6 +7,7 @@ import { S, sstep, local, damp, hash, clamp, lerp, copyEdge } from '../store'
 import { FOV } from './Stage'
 import { CloudField, cumulus, cloudSea } from './Cloud'
 import { FONTS } from '../lib/fonts'
+import { Ship, shipMatrix, shipStages, routePoint, linkLit, scanX, beam as hullBeam, GRID_X, GRID_Y, GRID_Z, TARGET_XZ, C_OK } from './Ship'
 
 export const SYS_Z = -60
 const TAU = Math.PI * 2
@@ -21,25 +22,6 @@ const GATE_X = 4.25
 const LAYER_Y = [1.9, 0.95, 0, -0.95, -1.9]
 const LAYERS = ['QUESTION', 'INTENT', 'SEMANTIC RETRIEVAL', 'NL TO SQL', 'RESULT']
 
-// Blue Marine geometry: four roles, one forward route, a bypass and two ways back
-const ROLES = [
-  { name: 'IMPORTER', p: new THREE.Vector3(-4.5, -0.35, 0.4) },
-  { name: 'DIRECTOR', p: new THREE.Vector3(-1.5, 0.45, -0.5) },
-  { name: 'ASSISTANT\nDIRECTOR', p: new THREE.Vector3(1.5, -0.45, 0.3) },
-  { name: 'PRINCIPAL\nOFFICER', p: new THREE.Vector3(4.5, 0.35, -0.3) },
-]
-const top = (v: THREE.Vector3, dz = 0) => v.clone().add(new THREE.Vector3(0, 0.27, dz))
-const V3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
-const curve = (pts: THREE.Vector3[]) => new THREE.CatmullRomCurve3(pts, false, 'centripetal')
-// Importer → Director → AD → PO
-const ROUTE = curve([top(ROLES[0].p), V3(-3, 0.75, 0.1), top(ROLES[1].p), V3(0, -0.15, -0.2), top(ROLES[2].p), V3(3, 0.6, 0.15), top(ROLES[3].p)])
-// Director → PO directly, over the AD
-const BYPASS = curve([top(ROLES[1].p), V3(0.0, 2.25, 0.45), V3(3.0, 2.15, 0.35), top(ROLES[3].p)])
-// PO → AD: send-back
-const BACK = curve([top(ROLES[3].p), V3(4.0, 1.35, -1.05), V3(2.2, 1.25, -1.0), top(ROLES[2].p)])
-// AD → Director: escalation
-const ESC = curve([top(ROLES[2].p), V3(0.9, 1.05, -1.35), V3(-0.9, 1.45, -1.45), top(ROLES[1].p)])
-const PATHS = [ROUTE, BYPASS, BACK, ESC]
 
 const C_CREAM = new THREE.Color('#F3F3EC')
 const C_WHITE = new THREE.Color('#ffffff')
@@ -49,7 +31,6 @@ const C_SKY = new THREE.Color('#4FAED5')
 const C_CYAN = new THREE.Color('#9CD3E3')
 const C_COPPER = new THREE.Color('#F28A28')
 const C_GOLD = new THREE.Color('#D8AE61')
-const C_RED = new THREE.Color('#b9503a')
 
 const tmpV = new THREE.Vector3()
 const tmpQ = new THREE.Quaternion()
@@ -58,10 +39,9 @@ const tmpS = new THREE.Vector3()
 const A = new THREE.Vector3(), B = new THREE.Vector3(), ctrl = new THREE.Vector3(), dir = new THREE.Vector3(), Z = new THREE.Vector3(0, 0, 1)
 const rA = new THREE.Euler(), rB = new THREE.Euler()
 const cA = new THREE.Color(), cB = new THREE.Color()
-const LIFT = new THREE.Vector3(0, 0.12, 0)
 
-// path: 0 forward, 1 bypass, 2 send-back, 3 escalation
-type Tok = { h1: number; h2: number; h3: number; b: number; k: number; col: number; row: number; r: number; ang: number; path: number }
+/** gx/gz: the token's cell in Blue Marine's overlay grid (gx = −1: it streams along the network's links instead) */
+type Tok = { h1: number; h2: number; h3: number; b: number; k: number; col: number; row: number; r: number; ang: number; gx: number; gz: number }
 
 /** The four formations span ~10.8 world units. Scale them to the free space beside the copy. */
 function useFit() {
@@ -77,11 +57,23 @@ function useFit() {
 export function System() {
   const sysScale = useFit()
   const N = S.narrow ? 240 : 380
-  const toks = useMemo<Tok[]>(() => Array.from({ length: N }, (_, i) => {
-    const h1 = hash(i * 1.13 + 3), h2 = hash(i * 2.71 + 5), h3 = hash(i * 0.37 + 9)
-    const k = i % 5, j = Math.floor(i / 5)
-    return { h1, h2, h3, b: i % 5, k, col: j % 14, row: Math.floor(j / 14), r: 5.3 * Math.sqrt(hash(i * 3.3 + 1)), ang: i * 2.39996, path: i % 8 < 3 ? [2, 3, 1][i % 8] : 0 }
-  }), [N])
+  // Blue Marine: two in five tokens stream along the network's links, the rest form the overlay grid over the cargo
+  const grid = useMemo(() => {
+    const n = N - Math.ceil(N * 0.4), gz = Math.round(Math.sqrt(n / 4))
+    return { gz, gx: Math.ceil(n / gz) }
+  }, [N])
+  const toks = useMemo<Tok[]>(() => {
+    let g = 0
+    return Array.from({ length: N }, (_, i) => {
+      const h1 = hash(i * 1.13 + 3), h2 = hash(i * 2.71 + 5), h3 = hash(i * 0.37 + 9)
+      const k = i % 5, j = Math.floor(i / 5)
+      const onGrid = i % 5 >= 2
+      const cell = onGrid ? g++ : -1
+      return { h1, h2, h3, b: i % 5, k, col: j % 14, row: Math.floor(j / 14), r: 5.3 * Math.sqrt(hash(i * 3.3 + 1)), ang: i * 2.39996,
+        gx: onGrid ? cell % grid.gx : -1, gz: onGrid ? Math.floor(cell / grid.gx) : -1 }
+    })
+  }, [N, grid])
+  const shipM = useMemo(() => new THREE.Matrix4(), [])
   const cand = useMemo(() => {
     let best = 0, bd = 1e9
     toks.forEach((t, i) => { const d = Math.abs(t.r - 2.3) + (Math.cos(t.ang) > 0.4 ? 0 : 5) + (Math.sin(t.ang) > 0 ? 0 : 2); if (d < bd) { bd = d; best = i } })
@@ -101,10 +93,7 @@ export function System() {
   const ringRefs = useRef<THREE.Mesh[]>([])
   const pulse = useRef<THREE.Mesh>(null!)
   const beam = useRef<THREE.Mesh>(null!)
-  const packet = useRef<THREE.Mesh>(null!), packetLight = useRef<THREE.PointLight>(null!)
-  const tubeMats = useRef<THREE.MeshStandardMaterial[]>([])
-  const plinthMats = useRef<THREE.MeshStandardMaterial[]>([])
-  const clk = useRef({ a: 0, d: 0, dRate: 1, by: 0, lift: [0, 0, 0, 0, 0] })
+  const clk = useRef({ a: 0, lift: [0, 0, 0, 0, 0] })
 
   const bed = useMemo(() => [
     ...cloudSea({ c: [0, -3.2, 0], w: 34, d: 22, n: S.narrow ? 70 : 130, seed: 101, size: 1.3 }),
@@ -131,11 +120,6 @@ export function System() {
     // --- clocks: the agent flow freezes at the checkpoint; the permit route can run backwards
     const pause = sstep(0.5, 0.54, a) * (1 - sstep(0.8, 0.84, a))
     clk.current.a += dt * (S.reduced ? 0.25 : 1) * (1 - pause)
-    const sendBack = sstep(0.42, 0.45, d) * (1 - sstep(0.6, 0.63, d))
-    const bypass = sstep(0.6, 0.64, d) * (1 - sstep(0.8, 0.86, d))
-    clk.current.dRate = damp(clk.current.dRate, 1 - 2.1 * sendBack, 5, dt)
-    clk.current.d += dt * clk.current.dRate * (S.reduced ? 0.25 : 1)
-    clk.current.by += dt * (0.4 + bypass * 1.4) * (S.reduced ? 0.25 : 1)
     const diss = sstep(5.84, 6.0, s)
     const lifts = clk.current.lift
     for (let k = 0; k < 5; k++) lifts[k] = damp(lifts[k], S.hoverLayer === k && s > 2.95 && s < 4.05 ? 1 : 0, 6, dt)
@@ -196,18 +180,33 @@ export function System() {
         }
         return 0.9
       }
-      // f === 3: the permit routes. Forward tokens run backwards while work is being sent back.
-      const path = t.path
-      const speed = path === 0 ? clk.current.d * 0.06 : path === 1 ? clk.current.by * 0.12 : clk.current.d * -0.05 + t.h2
-      const u = (((t.h1 + speed) % 1) + 1) % 1
-      PATHS[path].getPoint(path >= 2 ? 1 - u : u, out)
-      out.x += (t.h2 - 0.5) * 0.12; out.y += (t.h3 - 0.5) * 0.12 + 0.04; out.z += (t.h1 - 0.5) * 0.12
-      rot.set(time * 0.5 + t.h1 * 6, t.h2 * 6, 0)
-      if (path >= 2) { col.copy(C_SLATE).lerp(C_RED, sendBack); return 0.5 + sendBack * 0.45 }
-      if (path === 1) { col.copy(C_CREAM).lerp(C_COPPER, bypass * 0.85); return 0.45 + bypass * 0.4 }
-      col.copy(t.h3 < 0.25 ? C_GRAPH : C_CREAM).lerp(C_COPPER, (1 - sendBack) * (t.h2 < 0.45 ? 0.8 : 0.2))
-      return 0.8
+      // f === 3: Blue Marine's network, riding with the ship (see Ship.tsx)
+      if (t.gx < 0) {
+        // traffic streaming along the route between the offices; links the application has reached run copper
+        const u = (t.h1 + time * 0.035) % 1
+        routePoint(u, out).add(tmpV.set((t.h2 - 0.5) * 0.09, (t.h3 - 0.5) * 0.09, (t.h1 - 0.5) * 0.09)).applyMatrix4(shipM)
+        rot.set(t.h1 * 6 + time * 0.8, t.h2 * 6 + time * 0.5, 0)
+        col.copy(t.h3 < 0.3 ? C_SKY : C_CREAM).lerp(C_COPPER, clamp(bmLit[Math.min(2, Math.floor(u * 3))] * 1.2) * 0.75)
+        if (bm.approve > 0.5) col.lerp(C_OK, 0.6)
+        return 0.28
+      }
+      // the overlay grid over the cargo: lights up as the manifest scan passes and marks the consignment under review
+      const gx = lerp(GRID_X[0], GRID_X[1], t.gx / Math.max(1, grid.gx - 1))
+      const gz = lerp(GRID_Z[0], GRID_Z[1], t.gz / Math.max(1, grid.gz - 1))
+      const inside = Math.abs(gz) < hullBeam(gx) * 0.86
+      out.set(gx, GRID_Y + Math.sin(gx * 1.7 + time * 1.1) * 0.02, gz).applyMatrix4(shipM)
+      rot.set(-Math.PI / 2, 0, 0)
+      const sweep = bm.docs > 0.01 && bm.docs < 0.99 ? Math.exp(-(((gx - bmScan) / 0.4) ** 2)) : 0
+      const scanned = bm.docs > 0 ? clamp((bmScan - gx) * -2 + 0.5) * 0.35 : 0
+      const near = Math.abs(gx - TARGET_XZ[0]) < 0.32 && Math.abs(gz - TARGET_XZ[1]) < 0.24 ? 1 : 0
+      col.copy(C_CYAN).lerp(C_WHITE, sweep * 0.8).lerp(C_SKY, scanned)
+      if (near && bm.docs > 0.5) col.copy(bm.permit > 0.5 ? C_OK : C_COPPER)
+      return inside ? 0.3 + sweep * 0.25 + near * (bm.docs > 0.5 ? 0.35 : 0) : 0
     }
+
+    // Blue Marine: the ship's pose and the application's progress, shared with Ship.tsx
+    const bm = shipStages(d), bmLit = linkLit(bm), bmScan = scanX(bm)
+    if (from === 3 || to === 3) shipMatrix(clock.elapsedTime, shipM)
 
     const mesh = inst.current
     for (let i = 0; i < toks.length; i++) {
@@ -244,7 +243,8 @@ export function System() {
 
     // --- per-scene apparatus fades in and out with its formation
     const vis = [1 - sstep(2.9, 3.04, s), sstep(2.96, 3.1, s) * (1 - sstep(3.9, 4.04, s)), sstep(3.96, 4.1, s) * (1 - sstep(4.9, 5.04, s)), sstep(4.96, 5.1, s) * (1 - sstep(5.84, 5.97, s))]
-    ;[gA, gB, gC, gD].forEach((g, k) => { const v = vis[k]; g.current.visible = v > 0.01; g.current.scale.setScalar(0.001 + v) })
+    // (Blue Marine's ship is not scaled in and out: it sails in and on, see shipMatrix)
+    ;[gA, gB, gC, gD].forEach((g, k) => { const v = vis[k]; g.current.visible = v > 0.01; g.current.scale.setScalar(k === 3 ? 1 : 0.001 + v) })
 
     // A: checkpoint
     const gm = gate.current.material as THREE.MeshStandardMaterial
@@ -289,31 +289,6 @@ export function System() {
     pulse.current.scale.setScalar(1 + Math.sin(time * 3) * 0.08)
     status(2, c < 0.28 ? 'Scanning the field' : c < 0.5 ? 'Candidate rising' : c < 0.86 ? 'Matched · nearest fit' : 'Returning to the field')
 
-    // D: one application. Forward, sent back, escalated, reassigned around the AD, verified.
-    let back = false
-    const seg = (a0: number, a1: number) => sstep(a0, a1, d)
-    if (d < 0.17) ROUTE.getPoint(seg(0.04, 0.14) / 3, tmpV)
-    else if (d < 0.43) ROUTE.getPoint((1 + seg(0.17, 0.27) + seg(0.27, 0.37)) / 3, tmpV)
-    else if (d < 0.52) { BACK.getPoint(seg(0.43, 0.51), tmpV); back = true }
-    else if (d < 0.66) { ESC.getPoint(seg(0.52, 0.6), tmpV); back = true }
-    else BYPASS.getPoint(seg(0.66, 0.78), tmpV)
-    packet.current.position.copy(tmpV).add(LIFT)
-    packet.current.rotation.y = time * 0.6
-    ;(packet.current.material as THREE.MeshStandardMaterial).emissive.copy(back ? C_RED : C_COPPER)
-    packetLight.current.position.copy(packet.current.position)
-    packetLight.current.color.copy(back ? C_RED : C_COPPER)
-    packetLight.current.intensity = 4 * vis[3]
-    const tm = tubeMats.current
-    if (tm[1]) { tm[1].emissiveIntensity = 0.1 + bypass * 0.6; tm[1].opacity = 0.4 + bypass * 0.55 }
-    if (tm[2]) { tm[2].emissiveIntensity = 0.05 + sendBack * 0.9; tm[2].opacity = 0.3 + sendBack * 0.65 }
-    if (tm[3]) { tm[3].emissiveIntensity = 0.05 + sendBack * 0.9; tm[3].opacity = 0.3 + sendBack * 0.65 }
-    ROLES.forEach((r, k) => {
-      const near = 1 - sstep(0.25, 0.9, packet.current.position.distanceTo(tmpV.copy(r.p).setY(r.p.y + 0.27)))
-      plinthMats.current[k].emissiveIntensity = near * 0.35
-    })
-    status(3,
-      d < 0.14 ? 'Importer applies' : d < 0.27 ? 'Director assigns to AD' : d < 0.37 ? 'AD routes to PO' : d < 0.43 ? 'PO verifying'
-      : d < 0.52 ? 'Sent back to AD' : d < 0.6 ? 'Escalated to Director' : d < 0.66 ? 'Director reassigns' : d < 0.78 ? 'Reassigned straight to PO' : d < 0.86 ? 'PO verifying' : 'Verified')
   })
 
   return (
@@ -409,33 +384,9 @@ export function System() {
           <Text font={FONTS.mono} fontSize={0.14} color="#122027" position={[0, -0.82, 0.45]} rotation={[-Math.PI / 2, 0, 0]} anchorX="center" letterSpacing={0.08}>JOB</Text>
         </group>
 
-        {/* D — Blue Marine */}
+        {/* D — Blue Marine: a container ship under the permit platform's network */}
         <group ref={gD}>
-          {ROLES.map((r, k) => (
-            <group key={k} position={r.p.toArray()}>
-              <mesh>
-                <boxGeometry args={[1.4, 0.46, 1.0]} />
-                <meshStandardMaterial ref={(el) => { if (el) plinthMats.current[k] = el }} color="#1d2c33" roughness={0.55} metalness={0.1} emissive="#F28A28" emissiveIntensity={0} />
-              </mesh>
-              <Text font={FONTS.mono} fontSize={0.115} lineHeight={1.2} textAlign="center" color="#F3F3EC" position={[0, -0.01, 0.505]} anchorX="center" anchorY="middle" letterSpacing={0.08}>{r.name}</Text>
-            </group>
-          ))}
-          {PATHS.map((c, k) => (
-            <mesh key={k}>
-              <tubeGeometry args={[c, k === 0 ? 160 : 100, k === 0 ? 0.03 : 0.022, 10, false]} />
-              <meshStandardMaterial
-                ref={(el) => { if (el) tubeMats.current[k] = el }}
-                color={k >= 2 ? '#b9503a' : '#F28A28'} emissive={k >= 2 ? '#b9503a' : '#F28A28'}
-                emissiveIntensity={k === 0 ? 0.25 : 0.05} metalness={k === 0 ? 0.6 : 0.2} roughness={0.35}
-                transparent={k > 0} opacity={k === 0 ? 1 : 0.35} depthWrite={k === 0}
-              />
-            </mesh>
-          ))}
-          <mesh ref={packet}>
-            <boxGeometry args={[0.34, 0.06, 0.24]} />
-            <meshStandardMaterial color="#ffffff" emissive="#F28A28" emissiveIntensity={0.5} roughness={0.4} />
-          </mesh>
-          <pointLight ref={packetLight} distance={4} decay={1.5} intensity={0} />
+          <Ship setStatus={(t) => status(3, t)} />
         </group>
       </group>
     </group>
