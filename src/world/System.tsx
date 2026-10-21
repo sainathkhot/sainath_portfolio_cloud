@@ -7,6 +7,7 @@ import { S, sstep, local, damp, hash, clamp, lerp, copyEdge } from '../store'
 import { FOV } from './Stage'
 import { CloudField, cumulus, cloudSea } from './Cloud'
 import { FONTS } from '../lib/fonts'
+import { claimAccent } from './Accent'
 import { Ship, shipFit, shipMatrix, shipStages, routePoint, linkLit, scanX, beam as hullBeam, GRID_X, GRID_Y, GRID_Z, TARGET_XZ, C_OK } from './Ship'
 
 export const SYS_Z = -60
@@ -31,6 +32,7 @@ const C_SKY = new THREE.Color('#4FAED5')
 const C_CYAN = new THREE.Color('#9CD3E3')
 const C_COPPER = new THREE.Color('#F28A28')
 const C_GOLD = new THREE.Color('#D8AE61')
+const C_GATE_LIGHT = new THREE.Color('#ffb05a')
 
 const tmpV = new THREE.Vector3()
 const tmpQ = new THREE.Quaternion()
@@ -81,12 +83,19 @@ export function System() {
   }, [toks])
 
   const inst = useRef<THREE.InstancedMesh>(null!)
+  // the per-instance colour buffer exists from the start (three adds it on the first setColorAt), so the warm-up
+  // compiles the same shader variant the formations use instead of one without instance colours
+  const setInst = (m: THREE.InstancedMesh | null) => {
+    if (!m) return
+    inst.current = m
+    if (!m.instanceColor) { for (let i = 0; i < m.count; i++) m.setColorAt(i, C_CREAM) }
+  }
   const geo = useMemo(() => new RoundedBoxGeometry(0.17, 0.17, 0.07, 2, 0.025), [])
   const mat = useMemo(() => new THREE.MeshStandardMaterial({ roughness: 0.38, metalness: 0.05, color: '#ffffff' }), [])
 
   const root = useRef<THREE.Group>(null!)
   const gA = useRef<THREE.Group>(null!), gB = useRef<THREE.Group>(null!), gC = useRef<THREE.Group>(null!), gD = useRef<THREE.Group>(null!)
-  const gate = useRef<THREE.Mesh>(null!), gateLight = useRef<THREE.PointLight>(null!)
+  const gate = useRef<THREE.Mesh>(null!), gateLight = useRef<THREE.Object3D>(null!)
   const layerRefs = useRef<THREE.Group[]>([])
   const layerMats = useRef<THREE.MeshStandardMaterial[]>([])
   const probe = useRef<THREE.Mesh>(null!)
@@ -250,7 +259,7 @@ export function System() {
     const gm = gate.current.material as THREE.MeshStandardMaterial
     gm.emissiveIntensity = 0.15 + pause * 2.2
     gate.current.scale.setScalar(1 + pause * 0.25)
-    gateLight.current.intensity = pause * 14 * vis[0]
+    claimAccent(gateLight.current, pause * 14 * vis[0], C_GATE_LIGHT, 9, 1.6)
     status(0, a < 0.12 ? 'One request' : a < 0.38 ? 'Five agents · parallel' : a < 0.5 ? 'Converging' : a < 0.82 ? 'Stopped · human checkpoint' : 'Approved · resuming')
 
     // B: the question falls through the layers
@@ -296,7 +305,7 @@ export function System() {
       <CloudField puffs={bed} renderOrder={-1} hazeNear={18} hazeFar={90} />
       <CloudField puffs={banks} renderOrder={-1} hazeNear={8} hazeFar={90} />
       <group scale={sysScale}>
-        <instancedMesh ref={inst} args={[geo, mat, N]} frustumCulled={false} />
+        <instancedMesh ref={setInst} args={[geo, mat, N]} frustumCulled={false} />
 
         {/* A — Agentic Agile */}
         <group ref={gA}>
@@ -321,7 +330,8 @@ export function System() {
             <torusGeometry args={[0.62, 0.055, 16, 96]} />
             <meshStandardMaterial color="#D8AE61" metalness={0.9} roughness={0.25} emissive="#F28A28" emissiveIntensity={0.15} />
           </mesh>
-          <pointLight ref={gateLight} position={[GATE_X - 0.4, 0.3, 1.2]} color="#ffb05a" distance={9} decay={1.6} intensity={0} />
+          {/* where the shared accent light sits while the checkpoint holds (see Accent.tsx) */}
+          <object3D ref={gateLight} position={[GATE_X - 0.4, 0.3, 1.2]} />
           <Text font={FONTS.mono} fontSize={0.13} color="#122027" position={[GATE_X, -0.95, 0]} anchorX="center" letterSpacing={0.08}>HUMAN CHECKPOINT</Text>
           <Text font={FONTS.mono} fontSize={0.13} color="#122027" position={[SRC.x, -0.95, 0]} anchorX="center" letterSpacing={0.08}>ONE REQUEST</Text>
         </group>

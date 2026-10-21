@@ -4,10 +4,13 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { S, sstep, local, clamp, damp, copyEdge } from '../store'
+import { claimAccent } from './Accent'
 import { FONTS } from '../lib/fonts'
 import { CloudField, cumulus, cloudSea } from './Cloud'
 import { useCanvasTexture, MONO } from './Artifacts'
 import { FOV } from './Stage'
+
+const C_GLOW = new THREE.Color('#ffb05a')
 
 // E-Parking: one vehicle at one gate, from plate to barrier.
 // A single-lane entry floats on the cloud bed; the market's canopies sit in the haze behind it.
@@ -76,7 +79,7 @@ export function EParking() {
   const posMat = useRef<THREE.MeshStandardMaterial>(null!)
   const bead = useRef<THREE.Mesh>(null!)
   const trail = useRef<THREE.Mesh>(null!)
-  const glow = useRef<THREE.PointLight>(null!)
+  const glow = useRef<THREE.Object3D>(null!)
   const labels = useRef<Record<string, any>>({})
   const st = useRef({ carX: -4.4, prevX: -4.4, beadT: 0 })
 
@@ -162,7 +165,7 @@ export function EParking() {
     screenMat.current.emissiveIntensity = 0.08 + ph.fee * 0.9 * (1 - ph.leave)
     posMat.current.emissiveIntensity = ph.pay * 1.1 * (1 - ph.leave)
     arm.current.rotation.x = -ph.access * 1.15 * (1 - sstep(0.96, 1.0, e))
-    glow.current.intensity = (ph.fee * 2.2 + ph.pay * 2.5) * (1 - ph.leave)
+    claimAccent(glow.current, (ph.fee * 2.2 + ph.pay * 2.5) * (1 - ph.leave), C_GLOW, 4.5, 1.6)
 
     // the path: a bead carries the decision from camera to barrier
     const target = ph.access > 0.5 ? T.access : ph.pay > 0.5 ? T.pay : ph.fee > 0.5 ? T.fee : ph.classify > 0.5 ? T.classify : 0
@@ -228,7 +231,8 @@ export function EParking() {
             <meshStandardMaterial ref={posMat} color="#16252c" emissive="#F28A28" emissiveIntensity={0} />
           </mesh>
         </group>
-        <pointLight ref={glow} position={[1.2, 0.9, -0.9]} color="#ffb05a" distance={4.5} decay={1.6} intensity={0} />
+        {/* the booth's glow: the shared accent light, placed here while fee and payment run (see Accent.tsx) */}
+        <object3D ref={glow} position={[1.2, 0.9, -0.9]} />
         {/* The barrier post stands on the island, set back from its front face. It used to share that face exactly
             (both at z −1.17), so the two surfaces fought for the same depth and the post's base flickered. */}
         <group position={[1.95, -0.06, -1.36]}>

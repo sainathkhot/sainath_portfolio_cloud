@@ -4,10 +4,13 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Text, QuadraticBezierLine } from '@react-three/drei'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { S, damp, emit, hash, subscribe, sstep, toolkitBand } from '../store'
+import { claimAccent } from './Accent'
 import { FOV } from './Stage'
 import { TOOLS, type ToolId } from '../content'
 import { FONTS } from '../lib/fonts'
 import { CloudField, cumulus, cloudSea } from './Cloud'
+
+const C_TOOL_LIGHT = new THREE.Color('#ffc27a')
 
 export const WB_Z = -140
 
@@ -59,7 +62,8 @@ export function Workbench() {
   const [, force] = useState(0)
   useEffect(() => subscribe(() => force((n) => n + 1)), [])
   const root = useRef<THREE.Group>(null!)
-  const light = useRef<THREE.PointLight>(null!)
+  const light = useRef<THREE.Object3D>(null!)
+  const lightI = useRef(0)
   const bed = useMemo(() => [
     ...cloudSea({ c: [0, -4.1, -6.5], w: 30, d: 10, n: S.narrow ? 60 : 110, seed: 201, size: 1.25 }),
     ...cumulus({ c: [-9, -3, -9], w: 12, h: 6, n: 40, seed: 203 }),
@@ -99,7 +103,8 @@ export function Workbench() {
       const p = pos(cur)
       light.current.position.set(p[0], p[1] + 0.7, p[2] + 1.8)
     }
-    light.current.intensity = damp(light.current.intensity, cur ? 9 : 0, 5, dt)
+    lightI.current = damp(lightI.current, cur ? 9 : 0, 5, dt)
+    claimAccent(light.current, lightI.current, C_TOOL_LIGHT, 7, 1.4)
   })
 
   const cur = S.hoverTool ?? S.pinTool
@@ -110,7 +115,8 @@ export function Workbench() {
       <group scale={fit}>
       <CloudField puffs={bed} renderOrder={-1} hazeNear={16} hazeFar={80} />
       <CloudField puffs={banks} renderOrder={-1} hazeNear={8} hazeFar={80} />
-      <pointLight ref={light} color="#ffc27a" distance={7} decay={1.4} intensity={0} />
+      {/* follows the active tool; lit by the shared accent light (see Accent.tsx) */}
+      <object3D ref={light} />
       {TOOLS.map((t) => (
         <ToolNode key={t.id} id={t.id} name={t.name} role={t.role} onHover={set} fit={fit} />
       ))}
