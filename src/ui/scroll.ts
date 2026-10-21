@@ -28,7 +28,7 @@ export function goToFilm(s: number) {
 export const STOPS = { hero: 0, about: 1.45, work: 2.22, toolkit: 7.32, record: 9.4, contact: 11 }
 const ACTIVE: [keyof typeof STOPS, number, number][] = [['about', 0.8, 1.95], ['work', 1.95, 6.95], ['toolkit', 6.95, 7.95], ['record', 8.95, 10.05], ['contact', 10.05, 12]]
 
-type FadeEl = { el: HTMLElement; sec: number; f: number[] }
+type FadeEl = { el: HTMLElement; sec: number; f: number[]; o?: string; t?: string }
 
 /** Starts scroll, frame fades, reveals, cursor. Returns a cleanup. */
 export function startMotion() {
@@ -118,8 +118,10 @@ export function startMotion() {
       const [a, b, c, d] = fr.f
       const o = sstep(a, b, p) * (1 - sstep(c, d, p))
       const y = (1 - sstep(a, b, p)) * 26 - sstep(c, d, p) * 26
-      fr.el.style.opacity = o.toFixed(3)
-      fr.el.style.transform = `translate3d(0, ${y.toFixed(1)}px, 0)`
+      // write only what changed: a dozen frames restyled every tick is style work the scroll doesn't need
+      const os = o.toFixed(3), ts = `translate3d(0, ${y.toFixed(1)}px, 0)`
+      if (fr.o !== os) { fr.o = os; fr.el.style.opacity = os }
+      if (fr.t !== ts) { fr.t = ts; fr.el.style.transform = ts }
       // frames that aren't showing are transparent but stay in the tab order (they take no pointer: see .is-live),
       // so a keyboard user can Tab on into the next section; focusing inside one brings the film there (focusin below)
       const live = o > 0.55
