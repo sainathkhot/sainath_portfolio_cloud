@@ -11,6 +11,13 @@ import { claimAccent } from './Accent'
 import { Ship, shipFit, shipMatrix, shipStages, routePoint, linkLit, scanX, beam as hullBeam, GRID_X, GRID_Y, GRID_Z, TARGET_XZ, C_OK } from './Ship'
 
 export const SYS_Z = -60
+/**
+ * The formations' scale, shared with the camera (Film.tsx frames each phone scene by its projected size).
+ * k: phones only, the AI Chatbot's stack of layers is much narrower than the other formations, so it is drawn
+ * larger rather than left small in a frame sized for the widest one.
+ */
+export const SYS_FIT = { scale: 1, k: 1 }
+export const chatK = (s: number) => (S.narrow ? 1 + 0.14 * (sstep(2.9, 3.1, s) - sstep(3.9, 4.1, s)) : 1)
 const TAU = Math.PI * 2
 
 // Agentic Agile geometry
@@ -58,6 +65,8 @@ function useFit() {
 
 export function System() {
   const sysScale = useFit()
+  SYS_FIT.scale = sysScale
+  const fitGroup = useRef<THREE.Group>(null!)
   const N = S.narrow ? 240 : 380
   // Blue Marine: two in five tokens stream along the network's links, the rest form the overlay grid over the cargo
   const grid = useMemo(() => {
@@ -123,6 +132,8 @@ export function System() {
     const on = s > 1.82 && s < 6.25
     root.current.visible = on
     if (!on) return
+    SYS_FIT.k = chatK(S.s)
+    fitGroup.current.scale.setScalar(sysScale * SYS_FIT.k)
     const time = S.reduced ? 0 : clock.elapsedTime
     const a = local(2), b = local(3), c = local(4), d = local(5)
 
@@ -304,7 +315,7 @@ export function System() {
     <group ref={root} position={[0, 0, SYS_Z]}>
       <CloudField puffs={bed} renderOrder={-1} hazeNear={18} hazeFar={90} />
       <CloudField puffs={banks} renderOrder={-1} hazeNear={8} hazeFar={90} />
-      <group scale={sysScale}>
+      <group ref={fitGroup} scale={sysScale}>
         <instancedMesh ref={setInst} args={[geo, mat, N]} frustumCulled={false} />
 
         {/* A — Agentic Agile */}
@@ -323,7 +334,7 @@ export function System() {
                 <torusGeometry args={[0.3, 0.012, 8, 64]} />
                 <meshStandardMaterial color="#D8AE61" metalness={1} roughness={0.25} />
               </mesh>
-              <Text font={FONTS.mono} fontSize={0.11} color="#122027" position={[0.36, 0.3, 0]} anchorX="left" anchorY="middle" letterSpacing={0.08}>{`AGENT 0${k + 1}`}</Text>
+              <Text font={FONTS.mono} fontSize={S.narrow ? 0.22 : 0.11} color="#122027" position={[0.36, 0.3, 0]} anchorX="left" anchorY="middle" letterSpacing={0.08}>{`AGENT 0${k + 1}`}</Text>
             </group>
           ))}
           <mesh ref={gate} position={[GATE_X, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
@@ -332,8 +343,10 @@ export function System() {
           </mesh>
           {/* where the shared accent light sits while the checkpoint holds (see Accent.tsx) */}
           <object3D ref={gateLight} position={[GATE_X - 0.4, 0.3, 1.2]} />
-          <Text font={FONTS.mono} fontSize={0.13} color="#122027" position={[GATE_X, -0.95, 0]} anchorX="center" letterSpacing={0.08}>HUMAN CHECKPOINT</Text>
-          <Text font={FONTS.mono} fontSize={0.13} color="#122027" position={[SRC.x, -0.95, 0]} anchorX="center" letterSpacing={0.08}>ONE REQUEST</Text>
+          {/* phones: the formation is drawn small, so its labels are set larger (and the gate's ends at the gate's
+              right edge, so it stays in frame) */}
+          <Text font={FONTS.mono} fontSize={S.narrow ? 0.25 : 0.13} color="#122027" position={[S.narrow ? GATE_X + 0.68 : GATE_X, -0.95, 0]} anchorX={S.narrow ? 'right' : 'center'} letterSpacing={0.08}>HUMAN CHECKPOINT</Text>
+          <Text font={FONTS.mono} fontSize={S.narrow ? 0.25 : 0.13} color="#122027" position={[S.narrow ? SRC.x - 0.4 : SRC.x, -0.95, 0]} anchorX={S.narrow ? 'left' : 'center'} letterSpacing={0.08}>ONE REQUEST</Text>
         </group>
 
         {/* B — AI Chatbot */}
@@ -350,7 +363,7 @@ export function System() {
                 <edgesGeometry args={[new THREE.PlaneGeometry(6.3, 3.3)]} />
                 <lineBasicMaterial color="#ffffff" transparent opacity={0.85} />
               </lineSegments>
-              <Text font={FONTS.mono} fontSize={0.17} color="#122027" position={[-3.05, 0.02, 1.62]} rotation={[-Math.PI / 2, 0, 0]} anchorX="left" anchorY="bottom" letterSpacing={0.08}>
+              <Text font={FONTS.mono} fontSize={S.narrow ? 0.2 : 0.17} color="#122027" position={[-3.05, 0.02, 1.62]} rotation={[-Math.PI / 2, 0, 0]} anchorX="left" anchorY="bottom" letterSpacing={0.08}>
                 {`0${k + 1}  ${name}`}
               </Text>
             </group>
@@ -391,7 +404,7 @@ export function System() {
             <boxGeometry args={[0.02, 0.02, 1]} />
             <meshBasicMaterial color="#F28A28" />
           </mesh>
-          <Text font={FONTS.mono} fontSize={0.14} color="#122027" position={[0, -0.82, 0.45]} rotation={[-Math.PI / 2, 0, 0]} anchorX="center" letterSpacing={0.08}>JOB</Text>
+          <Text font={FONTS.mono} fontSize={S.narrow ? 0.26 : 0.14} color="#122027" position={[0, -0.82, 0.45]} rotation={[-Math.PI / 2, 0, 0]} anchorX="center" letterSpacing={0.08}>JOB</Text>
         </group>
 
         {/* D — Blue Marine: a container ship under the permit platform's network */}

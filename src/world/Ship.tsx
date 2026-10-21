@@ -190,15 +190,20 @@ export function routePoint(u: number, out: THREE.Vector3) {
 
 /** ship + network height in ship units, keel to the top of the highest label (phones) */
 const CONTENT_H = 4.9, CONTENT_MID = 1.45
+/** the ship and its network, in ship units: what the phone framing keeps in view (Film.tsx) */
+export const SHIP_BOX: [number[], number[]] = [[-4.4, -1.0, -1.0], [5.0, 3.95, 1.0]]
+/** the fit last used to draw the ship, for the framing */
+export const SHIP_STATE = { fit: 1.1 }
 /**
- * The ship's scale. Phones: sized to the free band above Blue Marine's copy (measured, see workBands), between 0.8 and
- * 1.1, so a short phone or a long copy block doesn't put the hull on the text. Wide screens: 1.1.
+ * The ship's scale. Phones: sized to the free band above Blue Marine's copy (measured, see workBands), between 0.68
+ * and 1.1, so a short phone or a long copy block doesn't put the hull on the text. Wide screens: 1.1.
  */
 export function shipFit(sysScale: number, H: number) {
   const b = S.workBands[3]
   if (!S.narrow || !b) return 1.1
   const pxPerUnit = (sysScale * H) / (2 * 13.1 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)))
-  return clamp((b.bottom - b.top - 12) / (CONTENT_H * pxPerUnit), 0.8, 1.1)
+  // the band plus the copy panel's 30px fade, which the hull may run into
+  return clamp((b.bottom - b.top + 18) / (CONTENT_H * pxPerUnit), 0.68, 1.1)
 }
 
 const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3()
@@ -208,8 +213,8 @@ const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Eule
  * cloud as the scene leaves. Phones centre the ship and its network on the lens (the camera lifts the scene into the
  * free band above the copy).
  */
-export function shipMatrix(time: number, out: THREE.Matrix4, fit = 1.1) {
-  const s = S.s, d = local(SECTION)
+export function shipMatrix(time: number, out: THREE.Matrix4, fit = SHIP_STATE.fit, at = S.s) {
+  const s = at, d = clamp(at - SECTION)
   const narrow = S.narrow
   const sway = S.reduced ? 0 : 1
   const enter = sstep(4.94, 5.16, s), leave = sstep(5.8, 5.98, s)
@@ -282,10 +287,11 @@ export function Ship({ setStatus, sysScale }: { setStatus: (t: string) => void; 
   }
 
   useFrame(({ clock, size }) => {
+    const fit = (SHIP_STATE.fit = shipFit(sysScale, size.height))
+    if (S.s < 4.85 || S.s > 6.05) return // the system group (and the ship with it) is hidden; nothing to pose
     const d = local(SECTION)
     const time = S.reduced ? 0 : clock.elapsedTime
     const st = shipStages(d)
-    const fit = shipFit(sysScale, size.height)
     shipMatrix(clock.elapsedTime, m4, fit)
     // labels and the permit tag keep most of their on-screen size when a phone shrinks the ship
     // (not all of it: the offices also move closer together, and full-size labels would touch)

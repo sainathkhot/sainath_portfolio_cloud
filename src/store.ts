@@ -114,8 +114,12 @@ export function workBands() {
   const nav = document.querySelector('.nav')?.getBoundingClientRect()
   const top = (nav ? nav.bottom : 56) + 8
   return [...document.querySelectorAll('.frame--work .work')].map((w) => {
-    const c = w.firstElementChild?.getBoundingClientRect(), f = w.closest('.frame')?.getBoundingClientRect()
-    return { top, bottom: c && f ? c.top - f.top - 10 : H * 0.5, H }
+    const fr = w.closest('.frame')
+    const c = w.firstElementChild?.getBoundingClientRect(), f = fr?.getBoundingClientRect()
+    // a hint line under the nav (the AI Chatbot's "Layers light as the question passes") also takes the top
+    const hint = fr?.querySelector('.hint')?.getBoundingClientRect()
+    const t = hint && f && hint.height ? Math.max(top, hint.bottom - f.top + 8) : top
+    return { top: t, bottom: c && f ? c.top - f.top - 10 : H * 0.5, H }
   })
 }
 

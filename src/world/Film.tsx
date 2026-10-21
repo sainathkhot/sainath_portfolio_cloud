@@ -5,6 +5,9 @@ import { S, bump, damp, sstep, filmFromScroll, copyEdge, toolkitBand, workBands,
 import { cloudShared } from './Cloud'
 import { skyU, veilU } from './Sky'
 import { CAM_DIST } from './Stage'
+import { SYS_Z, SYS_FIT, chatK } from './System'
+import { shipMatrix, SHIP_BOX, SHIP_STATE } from './Ship'
+import { EP_Z, EP_FIT } from './EParking'
 
 type K = [s: number, pos: [number, number, number], target: [number, number, number]]
 
@@ -138,10 +141,6 @@ export function Film() {
     const wOff = S.narrow ? 0 : wProj
     const wTkAll = sstep(7.02, 7.12, s) * (1 - sstep(7.9, 7.98, s))
     const offX = -(edge.current / 2) * wOff
-    // the toolkit centres its bench in the band between its title and its index on every screen, phones included
-    const offY = (S.narrow ? phoneLift(s, size.height) * wProj : 0) + band.current * wTkAll
-    if (Math.abs(offX) > 0.5 || Math.abs(offY) > 0.5) cam.setViewOffset(size.width, size.height, offX, offY, size.width, size.height)
-    else if (cam.view?.enabled) cam.clearViewOffset()
     // phones: the formations are small, so damp the camera's sideways drift to keep them in frame
     if (S.narrow) {
       const k = 1 - 0.6 * sstep(1.9, 2.0, s) * (1 - sstep(6.9, 7.0, s))
@@ -163,6 +162,11 @@ export function Film() {
     look.x += S.px * amp * 0.3
     camera.lookAt(look)
     camera.updateMatrixWorld()
+    // the lens offset is decided once the camera is placed: on phones it depends on where each scene projects
+    if (cam.view?.enabled) cam.clearViewOffset()
+    // the toolkit centres its bench in the band between its title and its index on every screen, phones included
+    const offY = (S.narrow && wProj > 0 ? phoneLift(s, cam, size.height) * wProj : 0) + band.current * wTkAll
+    if (Math.abs(offX) > 0.5 || Math.abs(offY) > 0.5) cam.setViewOffset(size.width, size.height, offX, offY, size.width, size.height)
 
     // weather
     const t = clock.elapsedTime
@@ -193,15 +197,70 @@ export function Film() {
   return null
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// phones: frame each project scene in the free space above its copy
+
+/** the core of each formation, in the formations' own units (System.tsx), that the phone framing must keep in view */
+const CORE: [number[], number[]][] = [
+  [[-4.4, -2.0, -1.0], [4.9, 2.0, 1.0]], // Agentic Agile: source, five branches, the checkpoint gate
+  [[-3.15, -2.0, -1.65], [3.15, 2.05, 1.65]], // AI Chatbot: the five layers
+  [[-3.2, -0.9, -2.6], [3.2, 1.6, 2.6]], // ShopperMatch: the job, the inner rings, the rising candidate
+]
+/** E-Parking's lane, car, booth, barrier and camera, in its own fitted units (EParking.tsx) */
+const EP_CORE: [number[], number[]] = [[-1.8, -0.7, -2.1], [3.5, 1.9, 1.1]]
+const _v = new THREE.Vector3(), _m = new THREE.Matrix4()
+
+/** screen-space vertical extent (px, top = 0) of project j's core, through the camera as placed (no lens offset) */
+function span(j: number, s: number, cam: THREE.PerspectiveCamera, H: number): [number, number] | null {
+  let lo = Infinity, hi = -Infinity
+  for (let c = 0; c < 8; c++) {
+    if (j <= 2) {
+      const [a, b] = CORE[j]
+      const k = SYS_FIT.scale * (j === 1 ? chatK(3.5) : 1)
+      _v.set(c & 1 ? b[0] : a[0], c & 2 ? b[1] : a[1], c & 4 ? b[2] : a[2]).multiplyScalar(k)
+      _v.z += SYS_Z
+    } else if (j === 3) {
+      // the ship and its network, at rest on the swell (its bob must not move the framing)
+      const [a, b] = SHIP_BOX
+      shipMatrix(0, _m, SHIP_STATE.fit, s)
+      _v.set(c & 1 ? b[0] : a[0], c & 2 ? b[1] : a[1], c & 4 ? b[2] : a[2]).applyMatrix4(_m).multiplyScalar(SYS_FIT.scale)
+      _v.z += SYS_Z
+    } else {
+      const [a, b] = EP_CORE
+      _v.set(c & 1 ? b[0] : a[0], c & 2 ? b[1] : a[1], c & 4 ? b[2] : a[2]).multiplyScalar(EP_FIT.scale)
+      _v.y += 0.3
+      _v.z += EP_Z
+    }
+    _v.applyMatrix4(cam.matrixWorldInverse)
+    if (_v.z > -0.5) return null // behind or at the lens: this scene isn't the one in view
+    _v.applyMatrix4(cam.projectionMatrix)
+    const y = ((1 - _v.y) / 2) * H
+    lo = Math.min(lo, y); hi = Math.max(hi, y)
+  }
+  return [lo, hi]
+}
+
 /**
- * Phones: how far (px) to lift the project scenes. At least a quarter of the frame, which centres a scene in the upper
- * half; more when a project's copy runs long and leaves less room above it, so the scene sits in the free band
- * instead of on the text. Blends between neighbouring projects as the formations change.
+ * Phones: how far (px) to lift the project scenes. The copy is anchored to the bottom of the frame, so each scene is
+ * placed by its own projected size in the free band between the nav and its copy: just above the copy, with any spare
+ * room going to the sky above rather than to a gap between the artwork and its text; centred in the band when it is
+ * taller than the band. Blends between neighbouring projects as the formations change.
  */
-function phoneLift(s: number, H: number) {
-  const b = S.workBands, base = H * 0.25
-  if (b.length < 5) return base
-  const at = (k: number) => { const c = b[Math.max(0, Math.min(4, k))]; return Math.max(base, H / 2 - (c.top + c.bottom) / 2) }
+function phoneLift(s: number, cam: THREE.PerspectiveCamera, H: number) {
+  const bands = S.workBands, base = H * 0.25
+  if (bands.length < 5) return base
+  const at = (k: number) => {
+    const j = Math.max(0, Math.min(4, k))
+    const b = bands[j], sp = span(j, s, cam, H)
+    if (!sp) return base
+    const [top, bot] = sp
+    const slack = b.bottom - b.top - (bot - top)
+    // room to spare: sit just above the copy. Too tall: keep clear of the nav and let the foot of the scene run into
+    // the copy panel's fade (its first 40px are a gradient, not text)
+    if (slack <= 0) return clamp(top - b.top, -H * 0.1, H * 0.48)
+    return clamp(bot - (b.bottom - Math.min(slack * 0.3, 28)), -H * 0.1, H * 0.48)
+  }
   const x = clamp(s - 2, 0, 5), j = Math.round(x)
-  return lerp(at(j - 1), at(j), sstep(j - 0.1, j + 0.1, x))
+  const t = sstep(j - 0.1, j + 0.1, x)
+  return t <= 0 ? at(j - 1) : t >= 1 ? at(j) : lerp(at(j - 1), at(j), t)
 }

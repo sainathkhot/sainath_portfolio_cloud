@@ -15,6 +15,8 @@ const C_GLOW = new THREE.Color('#ffb05a')
 // E-Parking: one vehicle at one gate, from plate to barrier.
 // A single-lane entry floats on the cloud bed; the market's canopies sit in the haze behind it.
 export const EP_Z = -100
+/** the scene's fitted scale, shared with the camera's phone framing (Film.tsx) */
+export const EP_FIT = { scale: 1 }
 const SECTION = 6
 
 const STOP_X = -0.45                       // car centre when it waits at the stop line
@@ -62,12 +64,15 @@ function useFit() {
     const aspect = size.width / size.height
     const visW = 2 * 11.5 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * aspect
     const free = S.narrow ? 1 : Math.max(0.4, (size.width - copyEdge() - 28) / size.width)
-    return clamp((visW * free * 0.95) / 9.4, 0.3, 0.95)
+    // phones: fit the gate, booth and camera rather than the whole lane (the car can arrive from off-frame), so the
+    // scene and its labels are drawn a third larger
+    return clamp((visW * free * 0.95) / (S.narrow ? 7.0 : 9.4), 0.3, 0.95)
   }, [size.width, size.height])
 }
 
 export function EParking() {
   const fit = useFit()
+  EP_FIT.scale = fit
   const root = useRef<THREE.Group>(null!)
   const car = useRef<THREE.Group>(null!)
   const wheels = useRef<THREE.Mesh[]>([])
@@ -190,7 +195,7 @@ export function EParking() {
 
   const lab = (k: string) => (el: any) => { if (el) labels.current[k] = el }
   const L = (k: keyof typeof NODES, text: string, dx = 0, dy = 0.17) => (
-    <Text ref={lab(k)} font={FONTS.mono} fontSize={0.13} color="#122027" letterSpacing={0.08}
+    <Text ref={lab(k)} font={FONTS.mono} fontSize={S.narrow ? 0.2 : 0.13} color="#122027" letterSpacing={0.08}
       position={[NODES[k].x + dx, NODES[k].y + dy, NODES[k].z]} anchorX="center" anchorY="bottom" fillOpacity={0}>{text}</Text>
   )
 
