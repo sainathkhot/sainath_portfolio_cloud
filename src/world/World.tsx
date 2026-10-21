@@ -40,9 +40,30 @@ function Warmup() {
     const f = ++n.current
     if ((f !== 4 && f !== 40 && f !== 140) || gl.getContext().isContextLost()) return
     warmWorld(gl, scene, camera)
-    if (f === 4) markWorldReady()
+    if (f === 4) { gpuBudget(gl, scene, camera); markWorldReady() }
   })
   return null
+}
+
+/**
+ * Time a few full frames of the opening scene, synchronised with the GPU, while the loading curtain is still up, and
+ * propose a starting resolution for this device: if a frame costs more than ~10 ms at the target resolution, scale the
+ * pixel count down to fit (App.tsx clamps it between its floor and target). Measured once, at load.
+ */
+function gpuBudget(gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
+  try {
+    const ctx = gl.getContext(), px = new Uint8Array(4), ms: number[] = []
+    for (let i = 0; i < 4; i++) {
+      const t0 = performance.now()
+      gl.render(scene, camera)
+      ctx.readPixels(0, 0, 1, 1, ctx.RGBA, ctx.UNSIGNED_BYTE, px) // waits for the frame to finish
+      ms.push(performance.now() - t0)
+    }
+    ms.sort((a, b) => a - b)
+    const m = ms[1] // the second-best of four: the first may still include driver warm-up
+    S.gpuMs = +m.toFixed(1)
+    if (m > 10) window.dispatchEvent(new CustomEvent('gpu-budget', { detail: gl.getPixelRatio() * Math.sqrt(10 / m) }))
+  } catch { /* keep the default resolution */ }
 }
 
 function warmWorld(gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {

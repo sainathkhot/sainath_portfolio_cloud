@@ -1,6 +1,6 @@
 import { Canvas } from '@react-three/fiber'
 import { PerformanceMonitor } from '@react-three/drei'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { World } from './world/World'
 import { Overlay, Nav } from './ui/Overlay'
 import { startMotion } from './ui/scroll'
@@ -29,7 +29,9 @@ function hasWebGL() {
 function quality() {
   const dpr = window.devicePixelRatio || 1
   const area = Math.max(1, window.innerWidth * window.innerHeight)
-  const budget = S.narrow ? 2.6e6 : 4.2e6 // device pixels per frame
+  // (wide screens: 3M, down from 4.2M, which let a retina laptop render ~1.8×, about twice the pixels of the 1.3× it
+  // once used; the clouds are many translucent layers, so every pixel is shaded several times)
+  const budget = S.narrow ? 2.6e6 : 3.0e6 // device pixels per frame
   const target = Math.max(1, Math.min(dpr, 2, Math.sqrt(budget / area)))
   const floor = Math.min(target, Math.max(1, target * 0.67))
   // multisampling only where pixels are coarse: at 1.75+ device pixels per CSS pixel the edges are already fine, and
@@ -43,6 +45,31 @@ export function App() {
   const [dpr, setDpr] = useState(q.target)
   const [layoutKey, setLayoutKey] = useState(0)
   const [lost, setLost] = useState(false)
+  // Every resolution change reallocates the canvas (a visible hitch), so changes are queued and applied only when the
+  // page is idle (no scroll for a moment), never in the middle of a transition. At most a few per visit.
+  const pending = useRef<number | null>(null)
+  const changes = useRef(0)
+  const request = (v: number) => { if (changes.current < 4) pending.current = +v.toFixed(2) }
+  useEffect(() => {
+    S.dpr = q.target
+    const id = window.setInterval(() => {
+      const v = pending.current
+      if (v == null || performance.now() - S.lastScrollT < 900) return
+      pending.current = null
+      setDpr((d) => { if (Math.abs(d - v) < 0.04) return d; changes.current++; S.dpr = v; return v })
+    }, 250)
+    return () => window.clearInterval(id)
+  }, [])
+  // the load-time measurement (World.tsx, behind the curtain) sets the starting resolution for this GPU; it applies at
+  // once, while the curtain is still up
+  useEffect(() => {
+    const on = (e: Event) => {
+      const v = +Math.max(q.floor, Math.min(q.target, (e as CustomEvent<number>).detail)).toFixed(2)
+      S.dpr = v; setDpr(v)
+    }
+    window.addEventListener('gpu-budget', on)
+    return () => window.removeEventListener('gpu-budget', on)
+  }, [q])
   // the adaptive step only starts once the world is built and has settled: loading hitches are not a verdict on the GPU
   const [adapt, setAdapt] = useState(false)
   useEffect(() => {
@@ -60,7 +87,8 @@ export function App() {
       id = window.setTimeout(() => {
         const n = quality()
         setQ((o) => (Math.abs(o.target - n.target) > 0.05 || o.floor !== n.floor ? n : o))
-        setDpr((d) => (Math.abs(d - n.target) > 0.05 ? Math.min(n.target, Math.max(n.floor, d)) : d))
+        const d = S.dpr || n.target
+        if (d > n.target + 0.05 || d < n.floor - 0.05) request(Math.min(n.target, Math.max(n.floor, d)))
       }, 300)
     }
     window.addEventListener('resize', re)
@@ -109,9 +137,9 @@ export function App() {
                 recover; after a few changes it settles where it is (each change reallocates the canvas, itself a hitch) */}
             {adapt && <PerformanceMonitor
               bounds={(hz) => (hz > 90 ? [55, 85] : [44, 57])}
-              onDecline={() => setDpr((d) => Math.max(q.floor, +(d - 0.25).toFixed(2)))}
-              onIncline={() => setDpr((d) => Math.min(q.target, +(d + 0.25).toFixed(2)))}
-              flipflops={6}
+              onDecline={() => request(Math.max(q.floor, (pending.current ?? dpr) - 0.25))}
+              onIncline={() => request(Math.min(q.target, (pending.current ?? dpr) + 0.25))}
+              flipflops={4}
             />}
             <World />
           </Canvas>
