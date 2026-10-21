@@ -66,16 +66,34 @@ change copy; the scenes read their labels from it where they show any.
 | `docs/portfolio-visual-baseline.md` | Recorded original values (e.g. the aircraft's size) so visual changes can be undone exactly |
 | `src/ui/Overlay.tsx` | All page content and section frames |
 | `src/ui/scroll.ts` | Lenis, frame fades, the Also Built hover controller, status lines, cursor, nav state |
+| `src/ui/PerfHud.tsx` | Preview builds only: the `?perf` overlay (frame times, render resolution, a scripted scroll path with a copyable report) |
+| `preview-tools/` | Preview builds only: `/theme-lab.html`, four test pages for browsers that force their own dark mode |
+| `docs/mobile-remediation.md` | Phone and Samsung Internet diagnosis, the approved plan and its constraints |
 
 ## Behaviour worth knowing
 
 - A loading curtain lifts once fonts are loaded and every scene's shaders are compiled, so no scene stutters on arrival.
-- Resolution adapts to measured frame rate (starts at 1.3×, moves between 0.85× and 1.75×).
+- Render resolution: the screen's own density up to 2×, within a per-frame pixel budget (2.6 M device pixels on phones,
+  3.0 M on wide screens). A GPU measurement behind the loading curtain sets the starting value. Later adaptive changes
+  wait until the page has been still for about a second, so the canvas is never reallocated mid-transition.
+- Touch is decided by the input actually used (the first touch or real mouse movement), not only by media queries:
+  Samsung Internet reports a hover-capable pointer on phones.
 - Scenes render only while the camera is near them.
 - `prefers-reduced-motion`: no smooth scrolling or reveals; the 3D scene renders on demand.
 - No WebGL: the opening and closing frames show the portrait and headline as plain HTML; all content stays readable.
 - GPU context loss: rendering stops at once, the sky gradient shows, and the world rebuilds shortly after.
 - `?debug` in the URL exposes `window.__film` (jump to a film position, pin a tool) for QA. It is absent otherwise.
+
+## Preview-only tools
+
+Builds of any branch other than `main` on Cloudflare Workers Builds (which sets `WORKERS_CI_BRANCH`), and local builds
+run with `PREVIEW_TOOLS=1`, include two diagnostics. Production builds of `main` contain neither.
+
+- `/theme-lab.html`: four variants of the same light page (A as the site ships, B a dark page background, C a declared
+  dark scheme that keeps the light palette, D a dark scheme). Open it in a browser that forces dark mode to see which
+  treatment that browser respects.
+- `?perf`: a frame-time overlay. "Run scripted path" glides through the same fifteen film legs, 2.4 s each, on any
+  device; "Copy report" copies the per-leg numbers so a phone and a laptop can be compared.
 
 ## The carrier: aircraft, or a licensed eagle
 
