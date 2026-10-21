@@ -56,6 +56,7 @@ change copy; the scenes read their labels from it where they show any.
 | `src/world/Cloud.tsx` | Procedural billboard cumulus; noise from a texture baked once on the GPU (`src/lib/glsl.ts`) |
 | `src/world/Stage.tsx` | Portrait, split headline around the figure, the head cloud (opening) and parted clouds (closing) |
 | `src/world/System.tsx` | One instanced set of tokens that morphs through the first four projects |
+| `src/world/Accent.tsx` | One shared accent point light the gate, booth and toolkit borrow, so the light count (and every shader) never changes mid-scroll |
 | `src/world/Ship.tsx` | Blue Marine: a container ship sailing through the cloud sea under a live network of the permit platform (importer → director → AD → PO, send-back path, scan, inspection, permit issued) |
 | `src/world/EParking.tsx` | The gate scene: vehicle, ANPR camera, booth, POS, barrier, and the identify → access path |
 | `src/world/Workbench.tsx` | Twelve tool objects on a three-row grid; hover, tap or the index wakes related tools |
