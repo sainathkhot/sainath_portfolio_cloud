@@ -24,7 +24,6 @@ export const S = {
   narrow: mq(NARROW_QUERY),
   touch: mq('(hover: none)'),
   reduced: mq('(prefers-reduced-motion: reduce)'),
-  low: false, // set when performance drops
   status: ['', '', '', '', ''] as string[], // live state line for each project scene
   ready: false,
   snap: false, // jump the film without easing (used by the test hook)
