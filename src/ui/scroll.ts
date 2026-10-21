@@ -2,7 +2,7 @@ import Lenis from 'lenis'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { SplitText } from 'gsap/SplitText'
-import { S, measureSections, sstep, filmFromScroll, emit, whenWorldReady, onResolveActive } from '../store'
+import { S, measureSections, sstep, clamp, lerp, filmFromScroll, emit, whenWorldReady, onResolveActive, SHORT_LANDSCAPE } from '../store'
 
 gsap.registerPlugin(ScrollTrigger, SplitText)
 
@@ -28,7 +28,20 @@ export function goToFilm(s: number) {
 export const STOPS = { hero: 0, about: 1.45, work: 2.22, toolkit: 7.32, record: 9.4, contact: 11 }
 const ACTIVE: [keyof typeof STOPS, number, number][] = [['about', 0.8, 1.95], ['work', 1.95, 6.95], ['toolkit', 6.95, 7.95], ['record', 8.95, 10.05], ['contact', 10.05, 12]]
 
-type FadeEl = { el: HTMLElement; sec: number; f: number[]; o?: string; t?: string }
+type FadeEl = { el: HTMLElement; sec: number; f: number[]; fn: number[] | null; o?: string; t?: string; op?: number }
+
+/**
+ * A project's copy on a phone. The panel's head (number, category, name, headline, live status) arrives with the
+ * section; as the section scrolls, the panel rises to reveal the detail (description, facts, stack), and copy taller
+ * than the panel scrolls inside it under a feathered edge. Near the end the panel settles back to its head, so the
+ * next project's title crossfades in over the same place while the scene morphs above. Everything is a function of
+ * scroll position (it runs backwards exactly) and is applied as transforms and opacity: no layout during the scroll.
+ */
+type WorkEl = {
+  fr: FadeEl; clip: HTMLElement; work: HTMLElement; head: HTMLElement; detail: HTMLElement; hint: HTMLElement | null
+  m: { topA: number; topB: number; over: number; bandTop: number; overL: number }
+  w?: string; c?: string; d?: string
+}
 
 /** Starts scroll, frame fades, reveals, cursor. Returns a cleanup. */
 export function startMotion() {
@@ -56,8 +69,88 @@ export function startMotion() {
   const frames: FadeEl[] = []
   const secs = Array.from(document.querySelectorAll('main.film > section'))
   document.querySelectorAll<HTMLElement>('[data-fade]').forEach((el) => {
-    frames.push({ el, sec: secs.indexOf(el.closest('section')!), f: el.dataset.fade!.split(',').map(Number) })
+    frames.push({
+      el, sec: secs.indexOf(el.closest('section')!), f: el.dataset.fade!.split(',').map(Number),
+      // phones and portrait tablets use their own windows: shorter passages without copy
+      fn: el.dataset.fadeNarrow ? el.dataset.fadeNarrow.split(',').map(Number) : null,
+    })
   })
+
+  // ---- project copy layout (phones: the two-state panel; short landscape: the column scrolls when too tall)
+  const nav = document.querySelector<HTMLElement>('.nav')
+  const bed = document.querySelector<HTMLElement>('.copybed')
+  const shortLand = window.matchMedia(SHORT_LANDSCAPE)
+  const works: WorkEl[] = frames.filter((f) => f.el.classList.contains('frame--work')).map((fr) => ({
+    fr,
+    clip: fr.el.querySelector<HTMLElement>('.work__clip')!, work: fr.el.querySelector<HTMLElement>('.work')!,
+    head: fr.el.querySelector<HTMLElement>('.work__head')!, detail: fr.el.querySelector<HTMLElement>('.work__detail')!,
+    hint: fr.el.querySelector<HTMLElement>('.hint'),
+    m: { topA: 0, topB: 0, over: 0, bandTop: 0, overL: 0 },
+  }))
+  const measureWorks = () => {
+    const navB = nav ? nav.getBoundingClientRect().bottom : 60
+    for (const w of works) {
+      const H = w.fr.el.clientHeight
+      if (S.narrow) {
+        const safe = parseFloat(getComputedStyle(w.fr.el).paddingBottom) || 0
+        const pad = parseFloat(getComputedStyle(w.work).paddingTop) || 0
+        const headH = w.head.offsetHeight + pad, fullH = w.work.offsetHeight
+        const hintB = w.hint && w.hint.offsetHeight ? w.hint.offsetTop + w.hint.offsetHeight : 0
+        const bandTop = Math.max(navB, hintB) + 8
+        // the scene always keeps at least a third of the frame (and never less than 200px)
+        const topMin = bandTop + Math.max(H * 0.34, 200)
+        const topA = Math.max(topMin, H - safe - headH)
+        const topB = Math.max(topMin, Math.min(topA, H - safe - fullH))
+        w.m = { topA, topB, over: Math.max(0, fullH - (H - safe - topB)), bandTop, overL: 0 }
+      } else {
+        w.m = { topA: 0, topB: 0, over: 0, bandTop: 0, overL: shortLand.matches ? Math.max(0, w.work.offsetHeight - w.clip.clientHeight) : 0 }
+      }
+    }
+  }
+  measureWorks()
+  on('resize', measureWorks)
+  document.fonts.ready.then(measureWorks)
+  const wro = new ResizeObserver(() => measureWorks())
+  works.forEach((w) => { wro.observe(w.work); wro.observe(w.fr.el) })
+  off.push(() => wro.disconnect())
+  const put = (w: WorkEl, k: 'w' | 'c' | 'd', el: HTMLElement, prop: 'transform' | 'opacity', v: string) => {
+    if (w[k] !== v) { w[k] = v; el.style[prop] = v }
+  }
+  let bedO = '', bedT = ''
+  const layoutWorks = (s: number) => {
+    let sw = 0, top = 0, band = 0
+    for (const w of works) {
+      const p = s - w.fr.sec, m = w.m
+      if (S.narrow) {
+        // reveal (0 = head only, 1 = head and detail) and the inner scroll; reduced motion: the full panel throughout,
+        // scrolling like a page
+        const r = S.reduced ? 1 : sstep(0.12, 0.28, p) * (1 - sstep(0.8, 0.9, p))
+        const i = S.reduced ? clamp((p - 0.08) / 0.8) : sstep(0.32, 0.78, p) * r
+        const t = lerp(m.topA, m.topB, r)
+        put(w, 'c', w.clip, 'transform', `translate3d(0, ${t.toFixed(1)}px, 0)`)
+        put(w, 'w', w.work, 'transform', `translate3d(0, ${(-i * m.over).toFixed(1)}px, 0)`)
+        put(w, 'd', w.detail, 'opacity', r.toFixed(3))
+        const o = w.fr.op ?? 0
+        if (o > 0.001) { sw += o; top += o * t; band += o * m.bandTop }
+      } else {
+        // short landscape: a column taller than the frame scrolls through the middle of the section
+        const i = m.overL > 0 ? sstep(0.3, 0.8, p) : 0
+        put(w, 'w', w.work, 'transform', i > 0 ? `translate3d(0, ${(-i * m.overL).toFixed(1)}px, 0)` : '')
+        put(w, 'c', w.clip, 'transform', '')
+        put(w, 'd', w.detail, 'opacity', '')
+      }
+    }
+    if (S.narrow && sw > 0.001) {
+      // the shared surface follows the panels, weighted by how much of each is showing (continuous across boundaries)
+      S.copyTop = top / sw; S.bandTop = band / sw
+    } else if (!S.narrow) S.copyTop = -1
+    if (bed) {
+      const o = S.narrow ? sstep(1.955, 2.045, s) * (1 - sstep(6.955, 7.045, s)) : 0
+      const ov = o.toFixed(3), tv = o > 0 ? `translate3d(0, ${S.copyTop.toFixed(1)}px, 0)` : bedT
+      if (ov !== bedO) { bedO = ov; bed.style.opacity = ov }
+      if (tv !== bedT) { bedT = tv; bed.style.transform = tv }
+    }
+  }
   // horizontal milestone tracks: slide by section progress, measured once per resize
   const tracks = Array.from(document.querySelectorAll<HTMLElement>('[data-track]')).map((el) => ({
     el, row: el.firstElementChild as HTMLElement, sec: secs.indexOf(el.closest('section')!),
@@ -106,18 +199,24 @@ export function startMotion() {
   on('focusin', (e) => {
     const fr = frames.find((f) => f.el.contains(e.target as Node))
     if (!fr || Number(fr.el.style.opacity || 0) > 0.5) return
-    const [, b, c] = fr.f
-    const y = yForFilm(fr.sec + (b + c) / 2)
+    const [, b, c] = S.narrow && fr.fn ? fr.fn : fr.f
+    // (projects on phones: the middle of the section, where the panel shows its detail)
+    const y = yForFilm(fr.sec + (fr.el.classList.contains('frame--work') && S.narrow ? 0.5 : (b + c) / 2))
     if (lenis) lenis.scrollTo(y, { immediate: true, force: true }); else window.scrollTo(0, y)
     S.snap = true
   })
+  let lastY = -1
   const tick = () => {
+    if (window.scrollY !== lastY) { lastY = window.scrollY; S.lastScrollT = performance.now() }
     const s = S.ready ? S.s : filmFromScroll(window.scrollY)
     for (const fr of frames) {
       const p = s - fr.sec
-      const [a, b, c, d] = fr.f
+      const [a, b, c, d] = S.narrow && fr.fn ? fr.fn : fr.f
       const o = sstep(a, b, p) * (1 - sstep(c, d, p))
-      const y = (1 - sstep(a, b, p)) * 26 - sstep(c, d, p) * 26
+      fr.op = o
+      // phones: project titles rise only a little as they crossfade; their panel does the travelling
+      const amp = S.narrow && fr.fn && fr.el.classList.contains('frame--work') ? 10 : 26
+      const y = S.reduced ? 0 : (1 - sstep(a, b, p)) * amp - sstep(c, d, p) * amp
       // write only what changed: a dozen frames restyled every tick is style work the scroll doesn't need
       const os = o.toFixed(3), ts = `translate3d(0, ${y.toFixed(1)}px, 0)`
       if (fr.o !== os) { fr.o = os; fr.el.style.opacity = os }
@@ -127,6 +226,7 @@ export function startMotion() {
       const live = o > 0.55
       if (fr.el.classList.contains('is-live') !== live) fr.el.classList.toggle('is-live', live)
     }
+    layoutWorks(s)
     alsoBuilt()
     for (const t of tracks) {
       const p = sstep(t.r[0], t.r[1], s - t.sec)
@@ -180,12 +280,13 @@ export function startMotion() {
 }
 
 function magnetic() {
-  if (S.touch || S.reduced) return () => {}
+  if (S.reduced) return () => {}
   const undo: (() => void)[] = []
   document.querySelectorAll<HTMLElement>('.mag').forEach((el) => {
     const x = gsap.quickTo(el, 'x', { duration: 0.6, ease: 'elastic.out(1, 0.45)' })
     const y = gsap.quickTo(el, 'y', { duration: 0.6, ease: 'elastic.out(1, 0.45)' })
     const move = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse') return
       const r = el.getBoundingClientRect()
       x((e.clientX - r.left - r.width / 2) * 0.28)
       y((e.clientY - r.top - r.height / 2) * 0.35)
@@ -197,20 +298,41 @@ function magnetic() {
   return () => undo.forEach((f) => f())
 }
 
+/** The kind of input actually in use: the first touch or real mouse movement decides, whatever the media queries said. */
+function setTouch(touch: boolean) {
+  const root = document.documentElement
+  root.classList.toggle('is-touch', touch)
+  root.classList.toggle('has-cursor', !touch && !S.reduced)
+  if (S.touch === touch) return
+  S.touch = touch
+  if (touch) { S.hoverTool = null; S.hoverLayer = -1; S.specHover = -1; S.px = S.py = 0 }
+  emit()
+}
+
 function cursor(on: <K extends keyof WindowEventMap>(t: K, fn: (e: WindowEventMap[K]) => void, o?: AddEventListenerOptions) => void) {
+  setTouch(S.touch)
+  document.documentElement.classList.toggle('ua-samsung', S.samsung)
+  on('pointerdown', (e) => { if (e.pointerType === 'touch') setTouch(true) }, { passive: true })
   on('pointermove', (e) => {
+    if (e.pointerType === 'touch') { setTouch(true); return } // a finger is not a pointer to follow
+    if (e.pointerType === 'mouse' && (e.movementX || e.movementY)) setTouch(false)
     S.px0 = e.clientX; S.py0 = e.clientY
     S.px = (e.clientX / window.innerWidth) * 2 - 1
     S.py = -((e.clientY / window.innerHeight) * 2 - 1)
   }, { passive: true })
-  if (S.touch) return () => {}
+  if (S.reduced) return () => {}
+  // the custom cursor exists on every device but only shows while the input is a mouse (html.has-cursor)
   const dot = document.createElement('div'); dot.className = 'cur'
   const ring = document.createElement('div'); ring.className = 'cur-ring'
   document.body.append(ring, dot)
-  document.documentElement.classList.add('has-cursor')
+  // unseen until the mouse first moves, then placed at the pointer (not flown in from the corner of the window)
+  dot.style.opacity = ring.style.opacity = '0'
+  let placed = false
   const dx = gsap.quickTo(dot, 'x', { duration: 0.08 }), dy = gsap.quickTo(dot, 'y', { duration: 0.08 })
   const rx = gsap.quickTo(ring, 'x', { duration: 0.45, ease: 'power3.out' }), ry = gsap.quickTo(ring, 'y', { duration: 0.45, ease: 'power3.out' })
   on('pointermove', (e) => {
+    if (e.pointerType !== 'mouse') return
+    if (!placed) { placed = true; gsap.set([dot, ring], { x: e.clientX, y: e.clientY }); dot.style.opacity = ring.style.opacity = '' }
     dx(e.clientX); dy(e.clientY); rx(e.clientX); ry(e.clientY)
     const t = e.target as HTMLElement
     const hot = !!t.closest?.('[data-cursor], a, button') || document.body.dataset.hot === '1'
@@ -220,7 +342,7 @@ function cursor(on: <K extends keyof WindowEventMap>(t: K, fn: (e: WindowEventMa
   on('pointerup', () => ring.classList.remove('is-down'))
   // hide the custom cursor when the pointer leaves the window
   const out = (e: MouseEvent) => { if (!e.relatedTarget) { dot.style.opacity = ring.style.opacity = '0' } }
-  const over = () => { dot.style.opacity = ring.style.opacity = '' }
+  const over = () => { if (placed) dot.style.opacity = ring.style.opacity = '' }
   document.addEventListener('mouseout', out); document.addEventListener('mouseover', over)
   return () => {
     dot.remove(); ring.remove(); document.documentElement.classList.remove('has-cursor')

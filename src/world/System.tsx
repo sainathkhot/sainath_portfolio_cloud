@@ -3,7 +3,7 @@ import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
-import { S, sstep, local, damp, hash, clamp, lerp, copyEdge } from '../store'
+import { S, sstep, local, damp, hash, clamp, lerp, copyEdge, hovers } from '../store'
 import { FOV } from './Stage'
 import { CloudField, cumulus, cloudSea } from './Cloud'
 import { FONTS } from '../lib/fonts'
@@ -11,13 +11,8 @@ import { claimAccent } from './Accent'
 import { Ship, shipFit, shipMatrix, shipStages, routePoint, linkLit, scanX, beam as hullBeam, GRID_X, GRID_Y, GRID_Z, TARGET_XZ, C_OK } from './Ship'
 
 export const SYS_Z = -60
-/**
- * The formations' scale, shared with the camera (Film.tsx frames each phone scene by its projected size).
- * k: phones only, the AI Chatbot's stack of layers is much narrower than the other formations, so it is drawn
- * larger rather than left small in a frame sized for the widest one.
- */
-export const SYS_FIT = { scale: 1, k: 1 }
-export const chatK = (s: number) => (S.narrow ? 1 + 0.14 * (sstep(2.9, 3.1, s) - sstep(3.9, 4.1, s)) : 1)
+/** The formations' scale, shared with the camera (Film.tsx frames each phone scene by its projected size). */
+export const SYS_FIT = { scale: 1 }
 const TAU = Math.PI * 2
 
 // Agentic Agile geometry
@@ -132,8 +127,6 @@ export function System() {
     const on = s > 1.82 && s < 6.25
     root.current.visible = on
     if (!on) return
-    SYS_FIT.k = chatK(S.s)
-    fitGroup.current.scale.setScalar(sysScale * SYS_FIT.k)
     const time = S.reduced ? 0 : clock.elapsedTime
     const a = local(2), b = local(3), c = local(4), d = local(5)
 
@@ -263,8 +256,11 @@ export function System() {
 
     // --- per-scene apparatus fades in and out with its formation
     const vis = [1 - sstep(2.9, 3.04, s), sstep(2.96, 3.1, s) * (1 - sstep(3.9, 4.04, s)), sstep(3.96, 4.1, s) * (1 - sstep(4.9, 5.04, s)), sstep(4.96, 5.1, s) * (1 - sstep(5.84, 5.97, s))]
-    // (Blue Marine's ship is not scaled in and out: it sails in and on, see shipMatrix)
-    ;[gA, gB, gC, gD].forEach((g, k) => { const v = vis[k]; g.current.visible = v > 0.01; g.current.scale.setScalar(k === 3 ? 1 : 0.001 + v) })
+    // (Blue Marine is not scaled in and out: the ship sails in and on and its network fades, both managed in Ship.tsx)
+    ;[gA, gB, gC, gD].forEach((g, k) => {
+      if (k === 3) { if (!g.current.visible) g.current.visible = true; return }
+      const v = vis[k]; g.current.visible = v > 0.01; g.current.scale.setScalar(0.001 + v)
+    })
 
     // A: checkpoint
     const gm = gate.current.material as THREE.MeshStandardMaterial
@@ -354,7 +350,7 @@ export function System() {
           {LAYERS.map((name, k) => (
             <group key={k} ref={(el) => { if (el) layerRefs.current[k] = el }} position={[0, LAYER_Y[k], 0]}>
               <mesh rotation={[-Math.PI / 2, 0, 0]}
-                onPointerOver={(e) => { e.stopPropagation(); S.hoverLayer = k; document.body.dataset.hot = '1' }}
+                onPointerOver={(e) => { e.stopPropagation(); if (!hovers(e)) return; S.hoverLayer = k; document.body.dataset.hot = '1' }}
                 onPointerOut={() => { if (S.hoverLayer === k) S.hoverLayer = -1; delete document.body.dataset.hot }}>
                 <planeGeometry args={[6.3, 3.3]} />
                 <meshStandardMaterial ref={(el) => { if (el) layerMats.current[k] = el }} color="#e8f6fb" emissive="#F28A28" emissiveIntensity={0} transparent opacity={0.18} side={THREE.DoubleSide} depthWrite={false} roughness={0.15} />

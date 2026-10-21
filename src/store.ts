@@ -9,6 +9,8 @@ const mq = (q: string) => typeof window !== 'undefined' && window.matchMedia(q).
  * it like a portrait phone left the scenes a sliver above the copy. Keep in step with the media queries in styles.css.
  */
 export const NARROW_QUERY = '(max-aspect-ratio: 4/5), (max-width: 760px) and (max-aspect-ratio: 4/3)'
+/** a phone turned on its side: the side-by-side layout in a frame under ~500px tall (styles.css, scroll.ts) */
+export const SHORT_LANDSCAPE = '(max-height: 500px) and (min-aspect-ratio: 4/3)'
 
 // One mutable state object read by both the WebGL world and the DOM layer every frame.
 export const S = {
@@ -22,7 +24,11 @@ export const S = {
   hoverLayer: -1,
   atmos: -1,
   narrow: mq(NARROW_QUERY),
-  touch: mq('(hover: none)'),
+  // Touch screens. Samsung Internet reports a hover-capable pointer on phones, so (hover: none) alone is not enough:
+  // a coarse primary pointer counts too, and the first real touch or mouse movement settles it (see scroll.ts).
+  touch: mq('(hover: none)') || mq('(pointer: coarse)'),
+  /** Samsung Internet: its scroll-to-top button floats over the bottom of the page, so text keeps clear of it */
+  samsung: typeof navigator !== 'undefined' && /SamsungBrowser/i.test(navigator.userAgent),
   reduced: mq('(prefers-reduced-motion: reduce)'),
   status: ['', '', '', '', ''] as string[], // live state line for each project scene
   ready: false,
@@ -32,10 +38,21 @@ export const S = {
   specHover: -1,  // 'Also built' 3D object under the pointer
   atmosPin: -1,   // touch: tapped project
   px0: -1, py0: -1, // last pointer position in client px
-  workBands: [] as { top: number; bottom: number; H: number }[], // phones: free band above each project's copy (px)
+  // phones, project sections: the band between the nav and the copy surface, in px from the top of the frame.
+  // Written by the copy layout (scroll.ts) every tick, read by the camera framing (Film.tsx).
+  bandTop: 0,
+  copyTop: -1,
+  lastScrollT: 0, // when the page last scrolled (ms): resolution changes wait for a pause
+  dpr: 0, // render resolution in use (device pixels per CSS pixel)
+  gpuMs: -1, // load-time GPU measurement of one frame of the opening scene (ms), for the ?perf overlay
 }
 
 const listeners = new Set<Listener>()
+/** pointer input that hovers (a mouse or a pen held above the screen); touches must not set hover states */
+export const hovers = (e: { pointerType?: string; nativeEvent?: { pointerType?: string } }) => {
+  const t = e.pointerType ?? e.nativeEvent?.pointerType
+  return t === 'mouse' || t === 'pen'
+}
 export const subscribe = (fn: Listener) => { listeners.add(fn); return () => { listeners.delete(fn) } }
 export const emit = () => listeners.forEach((l) => l())
 
@@ -105,29 +122,35 @@ export function whenWorldReady(timeoutMs: number) {
 }
 
 /**
- * Phones: the free band (px) above each project's copy, from under the nav to the copy's first line. The copy is
- * anchored to the bottom of the frame, so a project with longer copy leaves its scene less room.
- * Measured against the frame rather than the viewport, so a frame mid-fade doesn't skew it.
+ * The free space (px) for the toolkit's bench: between the title and the readout. On short landscape screens the
+ * readout sits at the left and the index runs along the bottom, so the bench takes the space right of the readout,
+ * down to the index (a full-width band there would leave it a sliver). left is 0 elsewhere.
  */
-export function workBands() {
-  const H = window.innerHeight
-  const nav = document.querySelector('.nav')?.getBoundingClientRect()
-  const top = (nav ? nav.bottom : 56) + 8
-  return [...document.querySelectorAll('.frame--work .work')].map((w) => {
-    const fr = w.closest('.frame')
-    const c = w.firstElementChild?.getBoundingClientRect(), f = fr?.getBoundingClientRect()
-    // a hint line under the nav (the AI Chatbot's "Layers light as the question passes") also takes the top
-    const hint = fr?.querySelector('.hint')?.getBoundingClientRect()
-    const t = hint && f && hint.height ? Math.max(top, hint.bottom - f.top + 8) : top
-    return { top: t, bottom: c && f ? c.top - f.top - 10 : H * 0.5, H }
-  })
-}
-
-/** free vertical band (px) between the toolkit title and its readout, where the bench should sit */
 export function toolkitBand() {
   const h = document.querySelector('.tk__head')?.getBoundingClientRect()
   const f = document.querySelector('.tk__foot')?.getBoundingClientRect()
-  const H = window.innerHeight
-  if (!h || !f) return { top: 0, bottom: H, H }
-  return { top: h.bottom + 8, bottom: f.top - 8, H }
+  const H = window.innerHeight, W = window.innerWidth
+  if (!h || !f) return { top: 0, bottom: H, H, left: 0, W }
+  if (window.matchMedia(SHORT_LANDSCAPE).matches) {
+    // right of both the title's text and the readout, from under the nav down to the index
+    const r = document.querySelector('.readout')?.getBoundingClientRect()
+    const rail = document.querySelector('.tk__rail')?.getBoundingClientRect()
+    const title = document.querySelector('.tk__head .display')
+    const nav = document.querySelector('.nav')?.getBoundingClientRect()
+    if (r && rail && title && nav) {
+      // the title's glyphs, not its box (the heading and its split lines are full-width blocks)
+      let textRight = 0
+      const walk = document.createTreeWalker(title, NodeFilter.SHOW_TEXT)
+      const range = document.createRange()
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        if (!n.textContent?.trim()) continue
+        range.selectNodeContents(n)
+        textRight = Math.max(textRight, range.getBoundingClientRect().right)
+      }
+      const left = Math.max(r.right, textRight) + 16
+      // (the index sits on a small panel that reaches a few px above it)
+      if (W - left > W * 0.3) return { top: nav.bottom + 8, bottom: rail.top - 16, H, left, W }
+    }
+  }
+  return { top: h.bottom + 8, bottom: f.top - 8, H, left: 0, W }
 }

@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Text, Billboard } from '@react-three/drei'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
@@ -188,42 +188,64 @@ export function routePoint(u: number, out: THREE.Vector3) {
   return LINKS[k].getPoint(u * 3 - k, out)
 }
 
-/** ship + network height in ship units, keel to the top of the highest label (phones) */
-const CONTENT_H = 4.9, CONTENT_MID = 1.45
+/** ship + network height midpoint in ship units (phones centre it on the lens) */
+const CONTENT_MID = 1.45
 /** the ship and its network, in ship units: what the phone framing keeps in view (Film.tsx) */
 export const SHIP_BOX: [number[], number[]] = [[-4.4, -1.0, -1.0], [5.0, 3.95, 1.0]]
+/** everything that sails with the hull, wake and bow spray included: what must be out of view before it shows */
+// (the stern wake's largest puffs reach about 9.7 aft and 3.1 abeam, counting their billboard radius)
+const BODY_BOX: [number[], number[]] = [[-9.8, -2.2, -3.2], [6.0, 2.4, 3.2]]
 /** the fit last used to draw the ship, for the framing */
 export const SHIP_STATE = { fit: 1.1 }
-/**
- * The ship's scale. Phones: sized to the free band above Blue Marine's copy (measured, see workBands), between 0.68
- * and 1.1, so a short phone or a long copy block doesn't put the hull on the text. Wide screens: 1.1.
- */
-export function shipFit(sysScale: number, H: number) {
-  const b = S.workBands[3]
-  if (!S.narrow || !b) return 1.1
-  const pxPerUnit = (sysScale * H) / (2 * 13.1 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)))
-  // the band plus the copy panel's 30px fade, which the hull may run into
-  return clamp((b.bottom - b.top + 18) / (CONTENT_H * pxPerUnit), 0.68, 1.1)
+/** The ship's scale: wide screens 1.1; phones 1.0, and the camera's lens fits the scene to its band (Film.tsx). */
+export function shipFit(_sysScale: number, _H: number) {
+  return S.narrow ? 1.0 : 1.1
 }
+
+/** the scroll window in which the ship exists; its entry and exit are inside it, off screen at both ends */
+const SHIP_ON = 4.78, SHIP_OFF = 6.0
 
 const _p = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler(), _s = new THREE.Vector3()
 /**
- * The ship's pose inside the system group (shared with the token formation, which rides over the cargo).
- * It sails in from the left as the scene arrives, makes slow headway through the section, and sails on into the
- * cloud as the scene leaves. Phones centre the ship and its network on the lens (the camera lifts the scene into the
- * free band above the copy).
+ * The ship's resting pose inside the system group, shared by the network overlay, the token formation that rides over
+ * the cargo and the phone framing. The hull itself sails in and on relative to this pose (see Ship: entry and exit).
+ * It makes slow headway through the section.
  */
-export function shipMatrix(time: number, out: THREE.Matrix4, fit = SHIP_STATE.fit, at = S.s) {
-  const s = at, d = clamp(at - SECTION)
+export function shipMatrix(time: number, out: THREE.Matrix4, fit = SHIP_STATE.fit, at = S.s, _withSail = false) {
+  const d = clamp(at - SECTION)
   const narrow = S.narrow
   const sway = S.reduced ? 0 : 1
-  const enter = sstep(4.94, 5.16, s), leave = sstep(5.8, 5.98, s)
-  // phones: the ship sits higher and a little smaller so the whole hull, bridge to bow, stays in the upper half
   const yaw = narrow ? -0.55 : -0.5
-  const run = (d - 0.5) * 1.1 - (1 - enter) * 7 + leave * 4
-  _p.set((narrow ? -0.3 * fit / 1.1 : 0.05) + Math.cos(yaw) * run, (narrow ? -CONTENT_MID * fit : -1.55) + 0.04 * Math.sin(time * 0.7) * sway - leave * 1.6, -0.4 - Math.sin(yaw) * run)
-  _q.setFromEuler(_e.set(0.018 * Math.sin(time * 0.5) * sway, yaw, 0.025 * Math.sin(time * 0.62 + 1) * sway + leave * 0.06, 'YXZ'))
+  const run = (d - 0.5) * 1.1
+  _p.set((narrow ? -0.3 * fit / 1.1 : 0.05) + Math.cos(yaw) * run, (narrow ? -CONTENT_MID * fit : -1.55) + 0.04 * Math.sin(time * 0.7) * sway, -0.4 - Math.sin(yaw) * run)
+  _q.setFromEuler(_e.set(0.018 * Math.sin(time * 0.5) * sway, yaw, 0.025 * Math.sin(time * 0.62 + 1) * sway, 'YXZ'))
   return out.compose(_p, _q, _s.set(fit, fit, fit))
+}
+
+const _clip = new THREE.Matrix4(), _c = new THREE.Vector4()
+/**
+ * Is the hull (with its wake and spray), moved by dx along its keel and dy up, entirely outside the camera's view?
+ * clip: projection × view × the ship's world matrix. The box is outside when all eight corners lie beyond the same
+ * plane of the view volume (left, right, top, bottom or near), tested in clip space so corners behind the lens count
+ * correctly. Conservative: a box that is outside only across a corner of the frame counts as visible.
+ */
+function bodyOffscreen(clip: THREE.Matrix4, dx: number, dy: number) {
+  const [a, b] = BODY_BOX
+  let L = 0, R = 0, T = 0, B = 0, N = 0
+  for (let k = 0; k < 8; k++) {
+    _c.set((k & 1 ? b[0] : a[0]) + dx, (k & 2 ? b[1] : a[1]) + dy, k & 4 ? b[2] : a[2], 1).applyMatrix4(clip)
+    if (_c.x < -_c.w) L++
+    if (_c.x > _c.w) R++
+    if (_c.y < -_c.w) B++
+    if (_c.y > _c.w) T++
+    if (_c.z < -_c.w) N++
+  }
+  return L === 8 || R === 8 || T === 8 || B === 8 || N === 8
+}
+/** the shortest run along the keel (sign gives the direction) that puts the hull out of view, plus a margin */
+function clearRun(clip: THREE.Matrix4, dir: number, dy: number) {
+  for (let L = 0; L <= 80; L += 0.75) if (bodyOffscreen(clip, dir * L, dy)) return L + 1.5
+  return 82
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -253,6 +275,11 @@ export function Ship({ setStatus, sysScale }: { setStatus: (t: string) => void; 
   const outline = useRef<THREE.LineSegments>(null!)
   const badge = useRef<THREE.Group>(null!)
   const radar = useRef<THREE.Mesh>(null!)
+  const body = useRef<THREE.Group>(null!)
+  const track = useRef({ last: -1 })
+  const badgeText = useRef<any>(null)
+  // the network's materials and their resting opacities, so the whole overlay can fade as one
+  const fade = useRef<{ m: THREE.Material; base: number; dyn: boolean }[] | null>(null)
   const labels = useRef<THREE.Object3D[]>([])
   const m4 = useMemo(() => new THREE.Matrix4(), [])
   const geo = useMemo(() => {
@@ -277,6 +304,21 @@ export function Ship({ setStatus, sysScale }: { setStatus: (t: string) => void; 
   ], [])
 
   // cargo instances, once
+  // collect the network's materials once, at mount, and make them transparent before the warm-up compiles them:
+  // switching a material to transparent later changes its shader, which would mean a compile mid-scroll
+  useEffect(() => {
+    const list: { m: THREE.Material; base: number; dyn: boolean }[] = []
+    const dyn = new Set<THREE.Material>([...linkMats.current, backMat.current, ...dropMats.current, inspect.current.material as THREE.Material])
+    const texts = new Set<THREE.Object3D>([...labels.current, badgeText.current].filter(Boolean))
+    net.current.traverse((o) => {
+      const mm = (o as THREE.Mesh).material as THREE.Material | undefined
+      if (!mm || Array.isArray(mm) || texts.has(o)) return
+      if (!mm.transparent) { mm.transparent = true; mm.needsUpdate = true }
+      list.push({ m: mm, base: mm.opacity, dyn: dyn.has(mm) })
+    })
+    fade.current = list
+  }, [])
+
   const setCargo = (m: THREE.InstancedMesh | null) => {
     if (!m || m.userData.filled) return
     const o = new THREE.Object3D()
@@ -286,24 +328,47 @@ export function Ship({ setStatus, sysScale }: { setStatus: (t: string) => void; 
     m.userData.filled = true
   }
 
-  useFrame(({ clock, size }) => {
+  useFrame(({ clock, size, camera }) => {
     const fit = (SHIP_STATE.fit = shipFit(sysScale, size.height))
-    if (S.s < 4.85 || S.s > 6.05) return // the system group (and the ship with it) is hidden; nothing to pose
+    const s = S.s
+    if (s < SHIP_ON - 0.1 || s > SHIP_OFF + 0.1) {
+      if (body.current.visible) body.current.visible = false
+      net.current.visible = false
+      track.current.last = s
+      return // the system group (and the ship with it) is hidden; nothing to pose
+    }
     const d = local(SECTION)
     const time = S.reduced ? 0 : clock.elapsedTime
     const st = shipStages(d)
     shipMatrix(clock.elapsedTime, m4, fit)
-    // labels and the permit tag keep most of their on-screen size when a phone shrinks the ship
-    // (not all of it: the offices also move closer together, and full-size labels would touch)
-    const keep = (1.1 / fit) ** 0.75
+    const keep = 1
     labels.current.forEach((l) => l && l.scale.setScalar(keep))
     m4.decompose(ship.current.position, ship.current.quaternion, ship.current.scale)
+    ship.current.updateMatrixWorld()
     radar.current.rotation.y = time * 2.2
-    // the overlay lifts off and thins as the scene leaves
-    const leave = sstep(5.8, 5.95, S.s)
-    net.current.visible = leave < 0.99
-    net.current.position.y = leave * 1.2
-    net.current.scale.setScalar(1 - leave * 0.6)
+
+    // ---- the hull sails in and on. Its start and end are computed from the live camera, so at the moment it appears
+    // (and the moment it goes) it is entirely outside the view: it never pops into the middle of the frame.
+    _clip.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).multiply(ship.current.matrixWorld)
+    // (wide screens: the hull crosses the copy column on its way in, so it sets off once the previous project's copy
+    // has faded, 4.87 to 4.97, and comes to rest as this project's copy arrives)
+    const enter = sstep(4.86, 5.16, s), leave = sstep(5.78, SHIP_OFF, s)
+    const sink = -0.8 * leave
+    let dx = 0
+    if (enter < 1) dx -= clearRun(_clip, -1, 0) * (1 - enter) ** 2
+    if (leave > 0) dx += clearRun(_clip, 1, sink) * leave ** 2
+    const b = body.current
+    b.position.set(dx, sink, 0)
+    const want = s > SHIP_ON && s < SHIP_OFF
+    const jumped = Math.abs(s - track.current.last) > 0.05 // a jump (nav link mid-flight, test hook): no motion to hide
+    if (want !== b.visible && (jumped || bodyOffscreen(_clip, dx, sink))) b.visible = want
+    track.current.last = s
+
+    // ---- the platform's network stays over the ship's resting place; it gathers as the ship arrives and thins away
+    // as the scene leaves (the hull sails in beneath it and on out from under it)
+    const netA = sstep(4.9, 5.08, s) * (1 - sstep(5.8, 5.95, s))
+    net.current.visible = netA > 0.01
+    net.current.scale.setScalar(0.88 + 0.12 * netA)
 
     // offices: idle (slate), working (copper, pulsing), done (blue), all green once approved;
     // the AD turns red while the application is sent back to it
@@ -363,6 +428,11 @@ export function Ship({ setStatus, sysScale }: { setStatus: (t: string) => void; 
     bg.scale.setScalar(Math.max(0.001, st.permit) * (S.narrow ? 1.6 : 1) * keep)
     bg.position.set(TGT_TOP.x, TGT_TOP.y + 0.35 + 0.4 * st.permit, TGT_TOP.z)
 
+    // the whole overlay fades as one (per-frame opacities above are multiplied, the others start from their own)
+    for (const f of fade.current ?? []) f.m.opacity = (f.dyn ? f.m.opacity : f.base) * netA
+    labels.current.forEach((l: any) => { if (l) { l.fillOpacity = netA; l.outlineOpacity = netA } })
+    if (badgeText.current) badgeText.current.fillOpacity = netA
+
     setStatus(
       d < 0.11 ? 'Importer applies' : d < 0.18 ? 'Director assigns to AD' : d < 0.29 ? 'Document verification'
       : d < 0.36 ? 'AD routes to PO' : d < 0.45 ? 'Physical verification' : d < 0.53 ? 'Sent back to AD'
@@ -373,35 +443,38 @@ export function Ship({ setStatus, sysScale }: { setStatus: (t: string) => void; 
   const cream = '#ebe6db'
   return (
     <group ref={ship}>
-      {/* hull */}
-      <mesh geometry={hull}><meshStandardMaterial vertexColors roughness={0.55} metalness={0.12} /></mesh>
-      {/* deckhouse and bridge at the stern, taller than the stacks so the bridge can see over them; funnel behind */}
-      <group position={[-3.55, 0, 0]}>
-        <mesh geometry={geo.bridge} position={[0, 0.8, 0]}><meshStandardMaterial color={cream} roughness={0.6} /></mesh>
-        {/* bridge windows across the top, cabin windows below */}
-        <mesh position={[0.46, 1.4, 0]}><boxGeometry args={[0.02, 0.12, 1.4]} /><meshStandardMaterial color="#16242b" roughness={0.15} metalness={0.4} /></mesh>
-        {[0.55, 0.85, 1.12].map((y) => [-0.55, -0.33, -0.11, 0.11, 0.33, 0.55].map((z) => (
-          <mesh key={`${y}${z}`} position={[0.46, y, z]}><boxGeometry args={[0.02, 0.06, 0.1]} /><meshStandardMaterial color="#5b7480" roughness={0.3} /></mesh>
-        )))}
-        {/* bridge wings */}
-        <mesh position={[0.12, 1.56, 0]}><boxGeometry args={[0.56, 0.07, 2.12]} /><meshStandardMaterial color={cream} roughness={0.6} /></mesh>
-        <mesh position={[0.41, 1.46, 0]}><boxGeometry args={[0.02, 0.11, 2.06]} /><meshStandardMaterial color="#16242b" roughness={0.15} metalness={0.4} /></mesh>
-        {/* mast, radome and a turning radar scanner */}
-        <mesh position={[-0.08, 1.86, 0]}><cylinderGeometry args={[0.016, 0.022, 0.55, 8]} /><meshStandardMaterial color="#2a3a42" /></mesh>
-        <mesh position={[-0.08, 2.16, 0]}><sphereGeometry args={[0.06, 16, 12]} /><meshStandardMaterial color="#f2efe8" roughness={0.5} /></mesh>
-        <mesh ref={radar} position={[-0.08, 1.98, 0]}><boxGeometry args={[0.04, 0.025, 0.32]} /><meshStandardMaterial color="#2a3a42" /></mesh>
-        {/* funnel with the company band */}
-        <mesh geometry={geo.funnel} position={[-0.64, 1.3, 0]}><meshStandardMaterial color="#23323b" roughness={0.5} /></mesh>
-        <mesh position={[-0.64, 1.5, 0]}><boxGeometry args={[0.44, 0.09, 0.52]} /><meshStandardMaterial color="#c8742f" roughness={0.5} /></mesh>
+      {/* everything that sails: hull, deckhouse, cargo, spray and wake (positioned by the entry and exit) */}
+      <group ref={body} name="ship-hull" visible={false}>
+        {/* hull */}
+        <mesh geometry={hull}><meshStandardMaterial vertexColors roughness={0.55} metalness={0.12} /></mesh>
+        {/* deckhouse and bridge at the stern, taller than the stacks so the bridge can see over them; funnel behind */}
+        <group position={[-3.55, 0, 0]}>
+          <mesh geometry={geo.bridge} position={[0, 0.8, 0]}><meshStandardMaterial color={cream} roughness={0.6} /></mesh>
+          {/* bridge windows across the top, cabin windows below */}
+          <mesh position={[0.46, 1.4, 0]}><boxGeometry args={[0.02, 0.12, 1.4]} /><meshStandardMaterial color="#16242b" roughness={0.15} metalness={0.4} /></mesh>
+          {[0.55, 0.85, 1.12].map((y) => [-0.55, -0.33, -0.11, 0.11, 0.33, 0.55].map((z) => (
+            <mesh key={`${y}${z}`} position={[0.46, y, z]}><boxGeometry args={[0.02, 0.06, 0.1]} /><meshStandardMaterial color="#5b7480" roughness={0.3} /></mesh>
+          )))}
+          {/* bridge wings */}
+          <mesh position={[0.12, 1.56, 0]}><boxGeometry args={[0.56, 0.07, 2.12]} /><meshStandardMaterial color={cream} roughness={0.6} /></mesh>
+          <mesh position={[0.41, 1.46, 0]}><boxGeometry args={[0.02, 0.11, 2.06]} /><meshStandardMaterial color="#16242b" roughness={0.15} metalness={0.4} /></mesh>
+          {/* mast, radome and a turning radar scanner */}
+          <mesh position={[-0.08, 1.86, 0]}><cylinderGeometry args={[0.016, 0.022, 0.55, 8]} /><meshStandardMaterial color="#2a3a42" /></mesh>
+          <mesh position={[-0.08, 2.16, 0]}><sphereGeometry args={[0.06, 16, 12]} /><meshStandardMaterial color="#f2efe8" roughness={0.5} /></mesh>
+          <mesh ref={radar} position={[-0.08, 1.98, 0]}><boxGeometry args={[0.04, 0.025, 0.32]} /><meshStandardMaterial color="#2a3a42" /></mesh>
+          {/* funnel with the company band */}
+          <mesh geometry={geo.funnel} position={[-0.64, 1.3, 0]}><meshStandardMaterial color="#23323b" roughness={0.5} /></mesh>
+          <mesh position={[-0.64, 1.5, 0]}><boxGeometry args={[0.44, 0.09, 0.52]} /><meshStandardMaterial color="#c8742f" roughness={0.5} /></mesh>
+        </group>
+        {/* forecastle mast */}
+        <mesh position={[3.85, 0.42, 0]}><cylinderGeometry args={[0.02, 0.026, 0.7, 8]} /><meshStandardMaterial color="#2a3a42" /></mesh>
+        {/* cargo */}
+        <instancedMesh ref={setCargo} args={[geo.box, undefined, CARGO.length]} frustumCulled={false}>
+          <meshStandardMaterial map={tex} roughness={0.7} metalness={0.08} />
+        </instancedMesh>
+        {/* the sea of cloud around the hull */}
+        <CloudField puffs={foam} renderOrder={1} hazeNear={18} hazeFar={90} />
       </group>
-      {/* forecastle mast */}
-      <mesh position={[3.85, 0.42, 0]}><cylinderGeometry args={[0.02, 0.026, 0.7, 8]} /><meshStandardMaterial color="#2a3a42" /></mesh>
-      {/* cargo */}
-      <instancedMesh ref={setCargo} args={[geo.box, undefined, CARGO.length]} frustumCulled={false}>
-        <meshStandardMaterial map={tex} roughness={0.7} metalness={0.08} />
-      </instancedMesh>
-      {/* the sea of cloud around the hull */}
-      <CloudField puffs={foam} renderOrder={1} hazeNear={18} hazeFar={90} />
 
       {/* ---- the platform, drawn over the ship as a network ---- */}
       <group ref={net}>
@@ -457,7 +530,7 @@ export function Ship({ setStatus, sysScale }: { setStatus: (t: string) => void; 
           <Billboard>
             <mesh position={[0, 0, -0.002]}><planeGeometry args={[1.72, 0.46]} /><meshBasicMaterial color="#2f8a5b" /></mesh>
             <mesh><planeGeometry args={[1.66, 0.4]} /><meshBasicMaterial color="#f4f6f1" /></mesh>
-            <Text font={FONTS.mono} fontSize={0.17} letterSpacing={0.1} color="#2f8a5b" anchorX="center" anchorY="middle" position={[0, 0, 0.003]}>PERMIT ISSUED</Text>
+            <Text ref={badgeText} font={FONTS.mono} fontSize={0.17} letterSpacing={0.1} color="#2f8a5b" anchorX="center" anchorY="middle" position={[0, 0, 0.003]}>PERMIT ISSUED</Text>
           </Billboard>
         </group>
       </group>

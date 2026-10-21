@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
-import { S, damp, sstep, hash, togglePin } from '../store'
+import { S, damp, sstep, hash, togglePin, hovers } from '../store'
 import { FOV } from './Stage'
 import { useCanvasTexture, paperGrain, MONO, SANS, type Draw } from './Artifacts'
 
@@ -69,7 +69,7 @@ export function Specimens() {
   const hit = (i: number) => (
     <mesh
       material={HIT}
-      onPointerOver={(e) => { e.stopPropagation(); S.specHover = i }}
+      onPointerOver={(e) => { e.stopPropagation(); if (hovers(e)) S.specHover = i }}
       onPointerOut={() => { if (S.specHover === i) S.specHover = -1 }}
       // a tap on a list row (or a link) is handled by that element, so one gesture is only ever one toggle
       onClick={(e) => { e.stopPropagation(); if (S.touch && !(e.nativeEvent.target as Element)?.closest?.('.others, a, button')) togglePin(i) }}

@@ -90,7 +90,8 @@ export function Veil() {
     m.position.copy(cam.position)
     m.quaternion.copy(cam.quaternion)
     m.translateZ(-0.5)
-    const h = 2 * 0.5 * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * 1.08
+    // (oversized for the phone lens: a zoom below 1 and a view offset both show more than the plain frustum)
+    const h = (2 * 0.5 * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * (cam.view?.enabled ? 2.0 : 1.08)) / Math.min(1, cam.zoom)
     m.scale.set(h * cam.aspect, h, 1)
   })
   return <mesh ref={ref} material={mat} renderOrder={1000} frustumCulled={false}><planeGeometry args={[1, 1]} /></mesh>

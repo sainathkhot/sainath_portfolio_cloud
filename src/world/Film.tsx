@@ -1,11 +1,11 @@
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useRef } from 'react'
-import { S, bump, damp, sstep, filmFromScroll, copyEdge, toolkitBand, workBands, clamp, lerp } from '../store'
+import { S, bump, damp, sstep, filmFromScroll, copyEdge, toolkitBand, clamp, lerp } from '../store'
 import { cloudShared } from './Cloud'
 import { skyU, veilU } from './Sky'
 import { CAM_DIST } from './Stage'
-import { SYS_Z, SYS_FIT, chatK } from './System'
+import { SYS_Z, SYS_FIT } from './System'
 import { shipMatrix, SHIP_BOX, SHIP_STATE } from './Ship'
 import { EP_Z, EP_FIT } from './EParking'
 
@@ -98,13 +98,14 @@ export function Film() {
   const { camera, size } = useThree()
   const edge = useRef(0)
   const band = useRef(0)
+  const tkLeft = useRef(0)
   // the copy column's right edge and the toolkit's free band, re-read only when the canvas changes size
   useEffect(() => {
     const read = () => {
       edge.current = copyEdge()
       const b = toolkitBand()
       band.current = b.H / 2 - (b.top + b.bottom) / 2
-      S.workBands = workBands()
+      tkLeft.current = b.left
     }
     read()
     const id = window.setTimeout(read, 400) // after fonts settle
@@ -162,11 +163,19 @@ export function Film() {
     look.x += S.px * amp * 0.3
     camera.lookAt(look)
     camera.updateMatrixWorld()
-    // the lens offset is decided once the camera is placed: on phones it depends on where each scene projects
-    if (cam.view?.enabled) cam.clearViewOffset()
-    // the toolkit centres its bench in the band between its title and its index on every screen, phones included
-    const offY = (S.narrow && wProj > 0 ? phoneLift(s, cam, size.height) * wProj : 0) + band.current * wTkAll
-    if (Math.abs(offX) > 0.5 || Math.abs(offY) > 0.5) cam.setViewOffset(size.width, size.height, offX, offY, size.width, size.height)
+    // the lens is decided once the camera is placed: on phones it depends on where each scene projects.
+    // Measure through the plain lens (no zoom, no offset), then frame.
+    if (cam.zoom !== 1) cam.zoom = 1
+    if (cam.view?.enabled) cam.clearViewOffset(); else cam.updateProjectionMatrix()
+    // (short landscape: the bench sits right of the readout, so the toolkit shifts sideways as well)
+    let offY = band.current * wTkAll, offXp = offX - (tkLeft.current / 2) * wTkAll, zoom = 1
+    // phones: each project scene is fitted (zoom) and centred (offset) in the band between the nav and its copy panel
+    if (S.narrow && wProj > 0) {
+      const f = phoneFrame(s, cam, size.width, size.height)
+      zoom = lerp(1, f.z, wProj); offY += f.oy * wProj; offXp += f.ox * wProj
+    }
+    if (Math.abs(zoom - 1) > 0.001) { cam.zoom = zoom; cam.updateProjectionMatrix() }
+    if (Math.abs(offXp) > 0.5 || Math.abs(offY) > 0.5) cam.setViewOffset(size.width, size.height, offXp, offY, size.width, size.height)
 
     // weather
     const t = clock.elapsedTime
@@ -210,19 +219,18 @@ const CORE: [number[], number[]][] = [
 const EP_CORE: [number[], number[]] = [[-1.8, -0.7, -2.1], [3.5, 1.9, 1.1]]
 const _v = new THREE.Vector3(), _m = new THREE.Matrix4()
 
-/** screen-space vertical extent (px, top = 0) of project j's core, through the camera as placed (no lens offset) */
-function span(j: number, s: number, cam: THREE.PerspectiveCamera, H: number): [number, number] | null {
-  let lo = Infinity, hi = -Infinity
+/** screen extent (px, top-left = 0) of project j's core through the plain lens: [left, top, right, bottom] */
+function span(j: number, s: number, cam: THREE.PerspectiveCamera, W: number, H: number): number[] | null {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
   for (let c = 0; c < 8; c++) {
     if (j <= 2) {
       const [a, b] = CORE[j]
-      const k = SYS_FIT.scale * (j === 1 ? chatK(3.5) : 1)
-      _v.set(c & 1 ? b[0] : a[0], c & 2 ? b[1] : a[1], c & 4 ? b[2] : a[2]).multiplyScalar(k)
+      _v.set(c & 1 ? b[0] : a[0], c & 2 ? b[1] : a[1], c & 4 ? b[2] : a[2]).multiplyScalar(SYS_FIT.scale)
       _v.z += SYS_Z
     } else if (j === 3) {
-      // the ship and its network, at rest on the swell (its bob must not move the framing)
+      // the ship and its network at rest (its bob and its sail-in must not move the framing)
       const [a, b] = SHIP_BOX
-      shipMatrix(0, _m, SHIP_STATE.fit, s)
+      shipMatrix(0, _m, SHIP_STATE.fit, s, false)
       _v.set(c & 1 ? b[0] : a[0], c & 2 ? b[1] : a[1], c & 4 ? b[2] : a[2]).applyMatrix4(_m).multiplyScalar(SYS_FIT.scale)
       _v.z += SYS_Z
     } else {
@@ -234,33 +242,39 @@ function span(j: number, s: number, cam: THREE.PerspectiveCamera, H: number): [n
     _v.applyMatrix4(cam.matrixWorldInverse)
     if (_v.z > -0.5) return null // behind or at the lens: this scene isn't the one in view
     _v.applyMatrix4(cam.projectionMatrix)
-    const y = ((1 - _v.y) / 2) * H
-    lo = Math.min(lo, y); hi = Math.max(hi, y)
+    const x = ((_v.x + 1) / 2) * W, y = ((1 - _v.y) / 2) * H
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y)
   }
-  return [lo, hi]
+  return [x0, y0, x1, y1]
 }
 
+const _f = { z: 1, ox: 0, oy: 0 }
 /**
- * Phones: how far (px) to lift the project scenes. The copy is anchored to the bottom of the frame, so each scene is
- * placed by its own projected size in the free band between the nav and its copy: just above the copy, with any spare
- * room going to the sky above rather than to a gap between the artwork and its text; centred in the band when it is
- * taller than the band. Blends between neighbouring projects as the formations change.
+ * Phones: the lens for a project scene. The scene's core is projected through the plain lens, then zoomed to fill the
+ * band between the nav and the copy panel (never past 94% of the width) and offset so it sits centred in that band.
+ * The band follows the panel: large while only the project's title shows, smaller once the description is revealed,
+ * so the scene re-frames continuously as the copy rises and settles. Blends between neighbouring projects as the
+ * formations change. Zoom scales about the frame centre, so with zoom z a point at y moves to H/2 - z(H/2 - y).
  */
-function phoneLift(s: number, cam: THREE.PerspectiveCamera, H: number) {
-  const bands = S.workBands, base = H * 0.25
-  if (bands.length < 5) return base
-  const at = (k: number) => {
-    const j = Math.max(0, Math.min(4, k))
-    const b = bands[j], sp = span(j, s, cam, H)
-    if (!sp) return base
-    const [top, bot] = sp
-    const slack = b.bottom - b.top - (bot - top)
-    // room to spare: sit just above the copy. Too tall: keep clear of the nav and let the foot of the scene run into
-    // the copy panel's fade (its first 40px are a gradient, not text)
-    if (slack <= 0) return clamp(top - b.top, -H * 0.1, H * 0.48)
-    return clamp(bot - (b.bottom - Math.min(slack * 0.3, 28)), -H * 0.1, H * 0.48)
+function phoneFrame(s: number, cam: THREE.PerspectiveCamera, W: number, H: number) {
+  const top = S.bandTop || 72, bottom = S.copyTop > 0 ? S.copyTop + 18 : H * 0.5
+  const bh = Math.max(80, bottom - top), bc = (top + bottom) / 2
+  const at = (k: number, out: { z: number; ox: number; oy: number }) => {
+    const sp = span(Math.max(0, Math.min(4, k)), s, cam, W, H)
+    if (!sp) { out.z = 1; out.ox = 0; out.oy = H * 0.25; return out }
+    const [x0, y0, x1, y1] = sp
+    const z = clamp(Math.min((bh * 0.9) / Math.max(1, y1 - y0), (W * 0.94) / Math.max(1, x1 - x0)), 0.6, 1.7)
+    const cy = (y0 + y1) / 2, cx = (x0 + x1) / 2
+    out.z = z
+    out.oy = H / 2 - z * (H / 2 - cy) - bc
+    out.ox = clamp(z * (cx - W / 2), -W * 0.2, W * 0.2)
+    return out
   }
   const x = clamp(s - 2, 0, 5), j = Math.round(x)
   const t = sstep(j - 0.1, j + 0.1, x)
-  return t <= 0 ? at(j - 1) : t >= 1 ? at(j) : lerp(at(j - 1), at(j), t)
+  if (t <= 0) return at(j - 1, _f)
+  if (t >= 1) return at(j, _f)
+  const a = at(j - 1, { z: 1, ox: 0, oy: 0 }), b = at(j, { z: 1, ox: 0, oy: 0 })
+  _f.z = lerp(a.z, b.z, t); _f.ox = lerp(a.ox, b.ox, t); _f.oy = lerp(a.oy, b.oy, t)
+  return _f
 }
