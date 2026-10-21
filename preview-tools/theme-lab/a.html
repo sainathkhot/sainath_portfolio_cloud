@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="only light" />
+<meta name="robots" content="noindex" />
+<title>Theme lab A</title>
+<style>
+  :root { --panel: rgba(232, 243, 246, .94); --ink: #122027; --slate: #48616a; color-scheme: only light; }
+  html, body { margin: 0; background: #d8ebef; }
+  body { font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: var(--ink); min-height: 100vh; position: relative; overflow-x: hidden; }
+  
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; }
+  .wrap { position: relative; z-index: 1; padding: 14px 16px 28px; display: grid; gap: 14px; }
+  .tag { display: inline-block; font: 600 12px/1 ui-monospace, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase;
+    padding: 6px 9px; border-radius: 99px; background: #122027; color: #f3f3ec; }
+  .panel { margin: 0 -16px; padding: 28px 16px 18px; background: linear-gradient(180deg, rgba(234, 244, 247, 0), var(--panel) 28px); }
+  .eyebrow { font: 500 12px/1.4 ui-monospace, Menlo, monospace; letter-spacing: .1em; text-transform: uppercase; color: var(--slate); margin: 0; }
+  h2 { margin: 4px 0 6px; font-size: 30px; line-height: 1; letter-spacing: -.03em; }
+  h2 em { font-family: Georgia, serif; font-weight: 400; }
+  p { margin: 0; }
+  .ongoing { display: inline-block; border: 1px solid currentColor; color: #9a4a0c; border-radius: 99px; padding: 2px 8px; font: 12px ui-monospace, monospace; letter-spacing: .1em; }
+  .bare { padding: 8px 0; }
+  .btns { display: flex; gap: 8px; }
+  .btn { font: 12px ui-monospace, monospace; letter-spacing: .14em; text-transform: uppercase; padding: 12px 16px; border-radius: 99px; border: 1px solid rgba(18, 32, 39, .35); color: var(--ink); background: rgba(255, 255, 255, .34); text-decoration: none; }
+  .btn--solid { background: #122027; color: #f3f3ec; border-color: #122027; }
+  .read { font: 12px ui-monospace, monospace; color: var(--slate); }
+</style>
+</head>
+<body>
+<canvas id="sky" aria-hidden="true"></canvas>
+<div class="wrap">
+  <span class="tag">A · as the site</span>
+  <p class="read">Exactly the site's declarations: color-scheme only light. <span id="mq"></span></p>
+  <div class="panel">
+    <p class="eyebrow">04 / 05 · Digital government</p>
+    <p><span class="ongoing">Ongoing</span></p>
+    <h2>A workflow that can <em>bend.</em></h2>
+    <p>Text on a light surface, as in the project panels. It should read dark on light, like the site in light mode.</p>
+  </div>
+  <div class="bare">
+    <p class="eyebrow">Text with no surface</p>
+    <p>Each one wakes the tools it works with.</p>
+  </div>
+  <div class="btns"><a class="btn btn--solid" href="#">See the work</a><a class="btn" href="#">Let's talk</a></div>
+</div>
+<script>
+  // the sky is drawn in a canvas, as the site's 3D world is: browsers that force dark colours leave canvases alone
+  const c = document.getElementById('sky'), g = c.getContext('2d')
+  const draw = () => {
+    const w = c.width = innerWidth * devicePixelRatio, h = c.height = innerHeight * devicePixelRatio
+    const s = g.createLinearGradient(0, 0, 0, h); s.addColorStop(0, '#2a80b8'); s.addColorStop(.45, '#4faed5'); s.addColorStop(1, '#d8ebef')
+    g.fillStyle = s; g.fillRect(0, 0, w, h)
+    for (let i = 0; i < 26; i++) {
+      const x = (i * 97 % 100) / 100 * w, y = h * (.55 + (i * 37 % 40) / 100), r = (60 + (i * 53 % 80)) * devicePixelRatio
+      const cg = g.createRadialGradient(x, y, 0, x, y, r); cg.addColorStop(0, 'rgba(255,255,255,.95)'); cg.addColorStop(1, 'rgba(255,255,255,0)')
+      g.fillStyle = cg; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill()
+    }
+  }
+  draw(); addEventListener('resize', draw)
+  document.getElementById('mq').textContent = '· the browser reports prefers-color-scheme: ' + (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+</script>
+</body>
+</html>

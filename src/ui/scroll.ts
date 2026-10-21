@@ -17,6 +17,15 @@ function yForFilm(s: number) {
   return (S.tops[i] ?? 0) + span * f
 }
 
+/** preview tools (?perf): glide to a film position at a constant speed over a fixed time, for repeatable measurements */
+export function filmGlide(s: number, seconds: number) {
+  return new Promise<void>((done) => {
+    const y = yForFilm(s)
+    if (lenis) lenis.scrollTo(y, { duration: seconds, easing: (t) => t, lock: true, force: true, onComplete: () => done() })
+    else { window.scrollTo(0, y); window.setTimeout(done, seconds * 1000) }
+  })
+}
+
 /** fly the camera to a film position */
 export function goToFilm(s: number) {
   const y = yForFilm(s)
@@ -360,5 +369,6 @@ if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
     },
     pin(id: string | null) { S.pinTool = id as any; emit() },
     atmos(i: number) { S.atmos = i },
+    get s() { return S.s },
   }
 }

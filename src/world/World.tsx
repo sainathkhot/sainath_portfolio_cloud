@@ -109,7 +109,10 @@ function Invalidator() {
 /** ?debug only: expose the scene for QA scripts */
 function DebugHandle() {
   const { scene, camera, gl } = useThree()
-  useEffect(() => { if (new URLSearchParams(location.search).has('debug')) (window as any).__three = { scene, camera, gl } }, [scene, camera, gl])
+  useEffect(() => {
+    const q = new URLSearchParams(location.search)
+    if (q.has('debug') || (__PREVIEW_TOOLS__ && q.has('perf'))) (window as any).__three = { scene, camera, gl }
+  }, [scene, camera, gl])
   return null
 }
 
