@@ -13,6 +13,7 @@ import { Stage } from './Stage'
 import { System } from './System'
 import { Workbench } from './Workbench'
 import { CloudField, cumulus, cloudSea } from './Cloud'
+import { Accent } from './Accent'
 
 /** One-time GPU bake of the noise every cloud samples. */
 function NoiseBake() {
@@ -22,26 +23,49 @@ function NoiseBake() {
 }
 
 /**
- * Compile every scene's shaders and upload every texture once, behind the loading curtain,
- * so the first time the camera reaches a scene there is no compile hitch.
+ * Put the whole world on the GPU before anyone scrolls: every scene's shaders compiled, every geometry buffer and
+ * texture uploaded, so the first time the camera reaches a scene there is nothing left to build mid-scroll.
+ *
+ * Everything is drawn once, hidden scenes and off-screen objects included, with the scissor test cut down to a
+ * single pixel: the GPU receives the full frame's programs, buffers and textures in exactly the configuration the
+ * scroll will use, but shades almost nothing. (The previous warm-up only called compile(), which skipped geometry
+ * and every texture but a material's .map, and compiled for every scene's point lights at once, a light count the
+ * page never actually shows; see Accent.tsx.) It runs behind the loading curtain, then twice more as late text and
+ * textures arrive, so they are caught while the page is at rest.
  */
 function Warmup() {
   const { gl, scene, camera } = useThree()
   const n = useRef(0)
   useFrame(() => {
-    n.current++
-    if (n.current !== 4 || gl.getContext().isContextLost()) return
-    const hidden: THREE.Object3D[] = []
-    scene.traverse((o) => {
-      if (!o.visible) { hidden.push(o); o.visible = true }
-      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined
-      if (m && !Array.isArray(m) && m.map) gl.initTexture(m.map)
-    })
-    try { gl.compile(scene, camera) } catch { /* a failed warm-up only costs a hitch later */ }
-    hidden.forEach((o) => { o.visible = false })
-    markWorldReady()
+    const f = ++n.current
+    if ((f !== 4 && f !== 40 && f !== 140) || gl.getContext().isContextLost()) return
+    warmWorld(gl, scene, camera)
+    if (f === 4) markWorldReady()
   })
   return null
+}
+
+function warmWorld(gl: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.Camera) {
+  const hidden: THREE.Object3D[] = [], culled: THREE.Object3D[] = []
+  const seen = new Set<THREE.Texture>()
+  const upload = (v: unknown) => { if (v && (v as THREE.Texture).isTexture && !seen.has(v as THREE.Texture)) { seen.add(v as THREE.Texture); gl.initTexture(v as THREE.Texture) } }
+  scene.traverse((o) => {
+    if (!o.visible) { hidden.push(o); o.visible = true }
+    if (o.frustumCulled) { culled.push(o); o.frustumCulled = false }
+    const mat = (o as THREE.Mesh).material
+    for (const m of mat ? (Array.isArray(mat) ? mat : [mat]) : []) {
+      for (const k in m) upload((m as unknown as Record<string, unknown>)[k])
+      const u = (m as THREE.ShaderMaterial).uniforms
+      if (u) for (const k in u) upload(u[k]?.value)
+    }
+  })
+  const clip = gl.getScissorTest()
+  gl.setScissorTest(true)
+  gl.setScissor(0, 0, 1, 1)
+  try { gl.render(scene, camera) } catch { /* a failed warm-up only costs a hitch later */ }
+  gl.setScissorTest(clip)
+  hidden.forEach((o) => { o.visible = false })
+  culled.forEach((o) => { o.frustumCulled = true })
 }
 
 /** Reduced motion renders on demand: wake the loop briefly after any input. */
@@ -63,8 +87,8 @@ function Invalidator() {
 
 /** ?debug only: expose the scene for QA scripts */
 function DebugHandle() {
-  const { scene, camera } = useThree()
-  useEffect(() => { if (new URLSearchParams(location.search).has('debug')) (window as any).__three = { scene, camera } }, [scene, camera])
+  const { scene, camera, gl } = useThree()
+  useEffect(() => { if (new URLSearchParams(location.search).has('debug')) (window as any).__three = { scene, camera, gl } }, [scene, camera, gl])
   return null
 }
 
@@ -118,6 +142,7 @@ function AboutGate({ children }: { children: React.ReactNode }) {
 export function World() {
   return (
     <>
+      <Accent />
       <NoiseBake />
       <DebugHandle />
       <Invalidator />
