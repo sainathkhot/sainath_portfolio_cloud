@@ -334,12 +334,23 @@ html[data-tone="ink"] .nav { color: var(--ink); text-shadow: none; }
   .work__body { font-size: 13.5px; line-height: 1.45; color: #1c3139; }
   .facts, .work__note, .work__stack { display: none; }
   .frame--other { gap: 8px; }
+  .others { width: min(46rem, 64vw); } /* a wider list: two lines per description instead of three */
   .others li { padding: 7px 0; }
   .others__name { font-size: clamp(1.3rem, 6.4vh, 1.7rem); }
   .others__desc { margin-top: 3px; font-size: 13.5px; line-height: 1.4; color: #1c3139; }
   .others__metric, .others__stack { padding-top: 3px; }
   .readout { min-height: 0; }
   .readout__name { font-size: 22px; }
+  /* copy that is taller than the frame starts under the nav instead of spilling over it ('safe' where supported) */
+  .frame--work, .frame--other { align-content: start; align-content: safe center; }
+  /* the nav sits over bright cloud here: a faint scrim behind it keeps its text legible in either tone */
+  .nav { padding-bottom: 16px; background: linear-gradient(180deg, rgba(20, 72, 104, .26), rgba(20, 72, 104, 0)); }
+  html[data-tone="ink"] .nav { background: linear-gradient(180deg, rgba(240, 247, 249, .78), rgba(240, 247, 249, 0)); }
+}
+/* small landscape phones (e.g. 667×375): a wider copy column, so it fits the short frame in fewer lines */
+@media (max-height: 500px) and (min-aspect-ratio: 4/3) and (max-width: 760px) {
+  .work { width: min(30rem, 53vw); }
+  .work__head { font-size: clamp(1.4rem, 7vh, 1.8rem); }
 }
 /* ...and on touch, where no pointer can be caught by a moving row, Also Built only opens the space for a project's
    metric and stack under the one that's tapped */
@@ -380,6 +391,8 @@ html[data-tone="ink"] .nav { color: var(--ink); text-shadow: none; }
   .work__head { font-size: clamp(2.1rem, 9.4vw, 2.9rem); }
   .work__body { font-size: 15.5px; line-height: 1.55; color: #1c3139; }
   .work__note { display: none; } /* phones: the one note restates its project's first fact */
+  /* Blue Marine's role line names the same offices its network draws in the scene; on a phone the scene needs the room */
+  .sec--p4 .work__stack { display: none; }
   .work__stack { font-size: 11.5px; }
   .facts { margin-top: 2px; }
   .facts div { padding: 8px 0 7px; }
@@ -421,6 +434,11 @@ html[data-tone="ink"] .nav { color: var(--ink); text-shadow: none; }
   .contact__addr { font-size: 14px; }
   .copy { font-size: 11.5px; color: var(--slate-text); }
   .foot { font-size: 11px; letter-spacing: .1em; color: var(--slate-text); }
+}
+/* phones up to ~830px tall (375×812 and smaller): Blue Marine's facts restate its first sentence, so they step aside
+   and leave the ship and its network the room they need above the copy */
+@media (max-width: 760px) and (max-height: 830px) and (max-aspect-ratio: 4/3) {
+  .sec--p4 .facts { display: none; }
 }
 /* short phones (e.g. 375×667): the secondary lines step aside before the reading text shrinks */
 @media (max-width: 760px) and (max-height: 720px) and (max-aspect-ratio: 4/3) {

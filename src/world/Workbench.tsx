@@ -57,7 +57,8 @@ export function Workbench() {
     const visH = 2 * 11.5 * Math.tan(THREE.MathUtils.degToRad(FOV / 2))
     const visW = visH * (size.width / size.height)
     const fitH = ((b.bottom - b.top) / b.H) * visH / 7.4
-    return Math.min(1, Math.max(0.5, Math.min((visW * 0.92) / 10.4, fitH)))
+    // (short landscape frames may need the bench below half size to fit between the title and the index)
+    return Math.min(1, Math.max(0.34, Math.min((visW * 0.92) / 10.4, fitH)))
   }, [size.width, size.height])
   const [, force] = useState(0)
   useEffect(() => subscribe(() => force((n) => n + 1)), [])
