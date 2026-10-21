@@ -206,8 +206,9 @@ export function Overlay() {
       {/* 2-6 — PROJECTS */}
       {projects.map((p, i) => (
         <section key={p.id} {...sec(p.id)} className={`sec sec--work sec--${p.id}`}>
-          {/* phones: one title hands over to the next right at the boundary (out by 0.995, in from 0.005), while the scene morphs above */}
-          <div className="frame frame--work" data-fade="0.05,0.16,0.87,0.97" data-fade-narrow="0.005,0.045,0.955,0.995">
+          {/* phones: the title hands over just before the boundary (out 0.94 to 0.965, the next one in from 0.975), so
+              the next project's title is already there while its scene assembles above it */}
+          <div className="frame frame--work" data-fade="0.05,0.16,0.87,0.97" data-fade-narrow="-0.025,0,0.94,0.965">
             {/* the clip and the two parts are layout-neutral on wide screens (display: contents); on phones the copy
                 is a panel whose head arrives first and whose detail is revealed as the section scrolls (scroll.ts) */}
             <div className="work__clip">

@@ -155,7 +155,7 @@ export function startMotion() {
       S.copyTop = top / sw; S.bandTop = band / sw
     } else if (!S.narrow) S.copyTop = -1
     if (bed) {
-      const o = S.narrow ? sstep(1.955, 2.045, s) * (1 - sstep(6.955, 7.045, s)) : 0
+      const o = S.narrow ? sstep(1.93, 1.985, s) * (1 - sstep(6.93, 6.985, s)) : 0
       const ov = o.toFixed(3), tv = o > 0 ? `translate3d(0, ${S.copyTop.toFixed(1)}px, 0)` : bedT
       if (ov !== bedO) { bedO = ov; bed.style.opacity = ov }
       if (tv !== bedT) { bedT = tv; bed.style.transform = tv }
@@ -274,10 +274,16 @@ export function startMotion() {
     if (S.reduced) return
     document.querySelectorAll<HTMLElement>('[data-split]').forEach((el) => {
       const sec = el.closest('section') as HTMLElement
+      const fr = frames.find((f) => f.el.contains(el))
       const split = SplitText.create(el, { type: 'lines,words', mask: 'lines', linesClass: 'ln' })
       gsap.from(split.words, {
         yPercent: 115, duration: 1.15, ease: 'expo.out', stagger: 0.045,
-        scrollTrigger: { trigger: sec, start: 'top -6%', toggleActions: 'play none none reverse' },
+        // the headline sets off as its frame starts to show: phones and portrait tablets fade some frames in before
+        // their section begins (the project titles hand over just before the boundary), so start from that window
+        scrollTrigger: {
+          trigger: sec, toggleActions: 'play none none reverse', invalidateOnRefresh: true,
+          start: () => (S.narrow && fr?.fn && fr.fn[0] < 0 ? `top ${Math.round((0.01 - fr.fn[0]) * sec.offsetHeight)}px` : 'top -6%'),
+        },
       })
     })
     gsap.from('.hero__labels span, .hero__loc span, .hero__copy, .hero__cta .btn, .nav > *', { y: 18, opacity: 0, duration: 1.1, ease: 'expo.out', stagger: 0.06, delay: 0.35, clearProps: 'transform,opacity' })
