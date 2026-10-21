@@ -469,6 +469,13 @@ html.is-touch .others li:not(.is-on) .others__more { display: none; }
     display: block; position: absolute; left: 0; right: 0; top: 0; height: 100%; will-change: transform;
     -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 28px); mask-image: linear-gradient(180deg, transparent 0, #000 28px);
   }
+  /* the panel's foot: copy scrolling inside the panel fades out before the bottom margin, so it never runs under the
+     browser's own controls (Samsung Internet floats its scroll-to-top button there). A band in the surface's colour,
+     not a mask: the clip moves, the margin does not */
+  .frame--work::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; z-index: 1; pointer-events: none; height: calc(var(--bottom) + 18px);
+    background: linear-gradient(180deg, rgba(232, 243, 246, 0), rgba(232, 243, 246, .96) 18px);
+  }
   .work { position: absolute; left: 0; right: 0; top: 0; width: auto; display: grid; gap: 14px; padding: 30px var(--gutter) 0; will-change: transform; }
   .work__head { display: grid; gap: 8px; }
   .work__detail { display: grid; gap: 14px; will-change: opacity; }
@@ -498,7 +505,7 @@ html.is-touch .others li:not(.is-on) .others__more { display: none; }
     gap: 12px; margin: 0 calc(var(--gutter) * -1) calc(var(--bottom) * -1); padding: 26px var(--gutter) var(--bottom);
     background: linear-gradient(180deg, rgba(236, 245, 247, 0), rgba(236, 245, 247, .92) 26px);
   }
-  .readout { min-height: 118px; align-content: start; gap: 3px; }
+  .readout { min-height: 118px; align-content: end; gap: 3px; } /* the hint sits with the index; a selection grows upward */
   .readout__name { font-size: 26px; }
   .readout__role { font-size: 16px; }
   .readout__rel { font-size: 12px; }

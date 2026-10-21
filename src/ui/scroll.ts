@@ -101,7 +101,8 @@ export function startMotion() {
     for (const w of works) {
       const H = w.fr.el.clientHeight
       if (S.narrow) {
-        const safe = parseFloat(getComputedStyle(w.fr.el).paddingBottom) || 0
+        // the bottom margin, plus the panel's foot band that fades copy out above it (styles.css, .frame--work::after)
+        const safe = (parseFloat(getComputedStyle(w.fr.el).paddingBottom) || 0) + 18
         const pad = parseFloat(getComputedStyle(w.work).paddingTop) || 0
         const headH = w.head.offsetHeight + pad, fullH = w.work.offsetHeight
         const hintB = w.hint && w.hint.offsetHeight ? w.hint.offsetTop + w.hint.offsetHeight : 0
