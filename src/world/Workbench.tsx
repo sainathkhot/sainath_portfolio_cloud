@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Text, QuadraticBezierLine } from '@react-three/drei'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
-import { S, damp, emit, hash, subscribe, sstep, toolkitBand } from '../store'
+import { S, damp, emit, hash, sstep, toolkitBand, hovers } from '../store'
 import { claimAccent } from './Accent'
 import { FOV } from './Stage'
 import { TOOLS, type ToolId } from '../content'
@@ -45,6 +45,15 @@ export function Workbench() {
   const { size } = useThree()
   // fit the bench to the frame width; the layout spans ~11.6 units, centred 0.6 right
   // ...and to the free band between title and readout (the bench is ~5.6 units tall)
+  // the band is re-read when the copy around it changes size (web fonts arriving, rotation), not only on resize
+  const [band, setBand] = useState(0)
+  useEffect(() => {
+    const els = ['.tk__head', '.tk__foot'].map((q) => document.querySelector(q)).filter(Boolean) as Element[]
+    const ro = new ResizeObserver(() => setBand((n) => n + 1))
+    els.forEach((e) => ro.observe(e))
+    document.fonts?.ready.then(() => setBand((n) => n + 1))
+    return () => ro.disconnect()
+  }, [])
   const fit = useMemo(() => {
     const b = toolkitBand()
     if (S.narrow) {
@@ -57,11 +66,10 @@ export function Workbench() {
     const visH = 2 * 11.5 * Math.tan(THREE.MathUtils.degToRad(FOV / 2))
     const visW = visH * (size.width / size.height)
     const fitH = ((b.bottom - b.top) / b.H) * visH / 7.4
-    // (short landscape frames may need the bench below half size to fit between the title and the index)
-    return Math.min(1, Math.max(0.34, Math.min((visW * 0.92) / 10.4, fitH)))
-  }, [size.width, size.height])
-  const [, force] = useState(0)
-  useEffect(() => subscribe(() => force((n) => n + 1)), [])
+    const fitW = (visW * ((b.W - b.left) / b.W) * 0.92) / 10.4
+    // (short landscape frames may need the bench below half size to fit beside the readout and above the index)
+    return Math.min(1, Math.max(0.34, Math.min(fitW, fitH)))
+  }, [size.width, size.height, band])
   const root = useRef<THREE.Group>(null!)
   const light = useRef<THREE.Object3D>(null!)
   const lightI = useRef(0)
@@ -108,9 +116,6 @@ export function Workbench() {
     claimAccent(light.current, lightI.current, C_TOOL_LIGHT, 7, 1.4)
   })
 
-  const cur = S.hoverTool ?? S.pinTool
-  const curTool = TOOLS.find((t) => t.id === cur)
-
   return (
     <group ref={root} position={[0, 0, WB_Z]}>
       <group scale={fit}>
@@ -121,10 +126,12 @@ export function Workbench() {
       {TOOLS.map((t) => (
         <ToolNode key={t.id} id={t.id} name={t.name} role={t.role} onHover={set} fit={fit} />
       ))}
-      {curTool && curTool.rel.map((r) => {
-        const a = pos(curTool.id), b = pos(r as ToolId)
+      {/* every relation line exists from the start and is only shown for the active tool: selecting a tool used to
+          mount its lines (and compile their material) at the moment of the tap, a visible hitch on phones */}
+      {RELS.map(([from, to]) => {
+        const a = pos(from), b = pos(to)
         const mid: [number, number, number] = [(a[0] + b[0]) / 2, Math.max(a[1], b[1]) + (S.narrow ? 0.45 : 0.9), (a[2] + b[2]) / 2 + 0.9]
-        return <Path key={`${curTool.id}-${r}`} start={a} end={b} mid={mid} />
+        return <Path key={`${from}-${to}`} from={from} start={a} end={b} mid={mid} />
       })}
         {/* foreground wisps scale with the bench, so a small frame doesn't get a wall of cloud in front of it */}
         <CloudField puffs={wisps} renderOrder={6} hazeNear={20} hazeFar={80} opacity={0.75} />
@@ -133,10 +140,18 @@ export function Workbench() {
   )
 }
 
-function Path({ start, end, mid }: { start: [number, number, number]; end: [number, number, number]; mid: [number, number, number] }) {
+const RELS: [ToolId, ToolId][] = TOOLS.flatMap((t) => t.rel.map((r) => [t.id, r as ToolId] as [ToolId, ToolId]))
+
+function Path({ from, start, end, mid }: { from: ToolId; start: [number, number, number]; end: [number, number, number]; mid: [number, number, number] }) {
   const ref = useRef<any>(null)
-  useFrame((_, dt) => { if (ref.current?.material) ref.current.material.dashOffset -= dt * 0.8 })
-  return <QuadraticBezierLine ref={ref} start={start} end={end} mid={mid} color="#F28A28" lineWidth={1.6} dashed dashScale={6} dashSize={0.6} gapSize={0.35} transparent opacity={0.9} />
+  useFrame((_, dt) => {
+    const l = ref.current
+    if (!l) return
+    const on = (S.hoverTool ?? S.pinTool) === from && S.s > 6.95 && S.s < 8.12
+    if (l.visible !== on) l.visible = on
+    if (on && l.material) l.material.dashOffset -= dt * 0.8
+  })
+  return <QuadraticBezierLine ref={ref} visible={false} start={start} end={end} mid={mid} color="#F28A28" lineWidth={1.6} dashed dashScale={6} dashSize={0.6} gapSize={0.35} transparent opacity={0.9} />
 }
 
 function ToolNode({ id, name, role, onHover, fit }: { id: ToolId; name: string; role: string; onHover: (id: ToolId | null) => void; fit: number }) {
@@ -163,7 +178,7 @@ function ToolNode({ id, name, role, onHover, fit }: { id: ToolId; name: string; 
       <Body id={id} />
       <mesh
         visible={false}
-        onPointerOver={(e) => { e.stopPropagation(); onHover(id) }}
+        onPointerOver={(e) => { e.stopPropagation(); if (hovers(e)) onHover(id) }}
         onPointerOut={() => onHover(null)}
         onClick={(e) => { e.stopPropagation(); S.pinTool = S.pinTool === id ? null : id; onHover(S.touch ? null : id) }}
       >
