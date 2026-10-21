@@ -66,3 +66,117 @@ the PR description and in the review package that accompanies the implementation
 than `main`, or when `PREVIEW_TOOLS=1` is set for a local build. A production build of `main` contains neither the
 theme lab nor the overlay code. Before merging, the tools can also be deleted outright: they live in
 `preview-tools/` and `src/ui/PerfHud.tsx`.
+
+## Results (2026-10-22)
+
+Every check below ran headless: Chromium with SwiftShader (a CPU renderer) in a cloud container, the production build
+of this branch against the build of `d060058` (the branch before this pass). It verifies layout, behaviour and what
+the code does each frame. It does not show how smooth a real GPU feels, and it is not Samsung Internet itself. What
+still needs a real phone and laptop is listed at the end.
+
+### Root causes
+
+| Problem | Cause | Evidence |
+|---|---|---|
+| Charcoal panels; washed-out text in dark mode | Samsung Internet's default dark mode rewrites page colours and ignores `color-scheme`. Text without a surface of its own turned light over the light canvas sky (canvas is never darkened). | Phone recording; emulation below. Chrome honours the site's `only light` (verified). |
+| Cursor rings, "Hover" wording, rows stuck dimmed | Samsung Internet reports a hover-capable pointer, so the site treated the phone as a mouse device. | Code path; emulation below |
+| Floating ^ over content | Samsung Internet's own scroll-to-top button | Recording |
+| Empty clouds, scenes squeezed by copy | Phone fade windows left long passages with no copy; full copy was 520–580 px tall at 375×812 | Captures |
+| Toolkit grid over copy | Bench band measured only on resize; landscape band a sliver | Captures |
+| Ship pops in / cuts out (desktop) | Visibility switched at s≈4.966 with the hull already in view; exit cut at 5.97 while visible | Frame captures of `d060058` |
+| Freeze on Toolkit taps | Relation lines mounted, and their material compiled, on tap; whole-Toolkit re-render | Measured: see Performance |
+| Laptop stutter | Mid-scroll resolution changes reallocating the canvas, and a 4.2 M pixel budget through heavy cloud overdraw | The reallocations and their long tasks are measured headless; that they explain the laptop's stutter is still a hypothesis until `?perf` runs on it |
+
+### Viewports and sections
+
+Captured at 375×812, 390×844, 430×932 (18 film positions each, including both sides of each project boundary),
+667×375, 844×390, 768×1024, 1280×800 and 1440×900 (13 positions each). At every position: no horizontal overflow, no
+element outside the viewport, no console errors.
+
+Phone project transitions: each project arrives with its head (number, category, name, headline, live status) and a
+large scene; its panel rises to reveal the detail while the scene re-frames above it; it settles back to its head, and
+the next title takes over just before the boundary, so at the boundary itself (where the formations morph) the next
+title is already in place. The copy area is empty only between 0.965 and 0.975 of a section, about 2% of a screen of
+scroll. With reduced motion the full panel shows throughout.
+
+### Appearance
+
+| Mode | Result |
+|---|---|
+| Light | As designed at all sizes |
+| Chrome, phone in dark mode (`prefers-color-scheme: dark`), with and without Chrome's automatic dark mode | Identical to light (mean pixel difference ≤ 6/255, from cloud motion): the page's `only light` is honoured |
+| Samsung Internet's dark mode, emulated (its user agent; `color-scheme` stripped as Samsung ignores it; Blink's automatic dark mode on; `prefers-color-scheme` reporting light, as Samsung does) | Before: light text left on the light sky in Toolkit, Also Built, Record and Contact. After: every text group on its own surface, which turns dark under light text. Checked at 375, 390, 844×390, 667×375, 768×1024 and 1280×800 |
+
+A website cannot switch Samsung Internet's default dark mode off. `/theme-lab.html` (preview builds) shows on the phone
+whether any declaration is respected; if one is, the site can adopt it and keep its light design there.
+
+### Ship
+
+Stepped through the entry and the exit in 0.01 steps, scrolling down and back up, waiting for drawn frames at each step,
+at 1440×900, 1280×800, 844×390, 390×844 and 375×812. The check measures the hull's box from its own geometry (meshes,
+cargo, every wake and spray puff with its radius) and samples its surface against the view volume of the camera that
+drew the frame.
+
+- Every visibility switch (4.78/4.79 and 6.00, both directions, all five sizes) happened with no part of the box in view.
+- The first frame that shows any of the hull has it at the left edge (1440×900: s 4.91, NDC x −1 to −0.96; 390×844:
+  s 4.93, −1 to −0.87). The last frame on the way out has it at the right edge (s 5.94–5.95). Reverse scrolling mirrors
+  both.
+- No shader program is compiled and no texture uploaded when the ship's scene is reached (checked at every section, after
+  the load-time warm-up, at 390×844 and 1280×800).
+
+### Performance (headless, CPU-rendered)
+
+Frame times under SwiftShader are seconds per frame at laptop size and say nothing about a real GPU, so they are not
+compared here. These are behaviours, measured over the same scroll legs (4.5 → 10.95 and back, first visit and repeat):
+
+| | Laptop-size 1280×800 @2× | Phone 390×844 @3× (touch) |
+|---|---|---|
+| Canvas reallocations during scroll | 3 → 0 (2560 → 2240 → 1920 → 1715 px wide, before) | 3 → 0 (780 → 682 → 585 → 522) |
+| Long main-thread tasks during scroll | 24,542 ms → 57 ms | 1,299 ms → 0 |
+| Shader programs linked during scroll | 0 → 0 | 1 → 0 |
+| Texture uploads during scroll | 0 → 0 | 0 → 0 |
+
+First Toolkit taps on a phone (390×844): before, the second and third taps compiled shaders (2 and 4 compiles) with
+long tasks of 537–1,255 ms; after, no compiles and no long tasks on any tap.
+
+The `?perf` overlay ran its scripted path end to end at both sizes; the render resolution stayed constant through
+every leg.
+
+### Input, controls and accessibility
+
+- Samsung-style input (its user agent; the page told the pointer can hover, as Samsung Internet reports; input as
+  touches): before any input the custom cursor stays hidden; the first touch switches to touch behaviour (no cursor,
+  "Tap" wording); tapping an Also Built row opens it and tapping again closes it with no row left dimmed; a real mouse
+  moving switches back.
+- Text under the nav's controls: none at any of 19 positions at 375×812, 390×844, 667×375 and 844×390. With Samsung
+  Internet's user agent, copy also stays clear of the bottom band where its scroll-to-top button floats (none at 19
+  positions; copy scrolling inside a project panel fades out above that band).
+- Desktop mouse (1280×800): the cursor appears once the mouse moves; hovering a 3D tool, an index entry and an Also
+  Built row each still drives its selection.
+- Reduced motion (390×844) and no WebGL (390×844, 1280×800): no overflow, no errors; without WebGL the opening and
+  closing frames show the portrait and headline as HTML.
+- Keyboard (1280×800): 33 focus stops, every one inside the viewport with a visible focus outline. Focusing a control in
+  a section that isn't showing brings the film there; under SwiftShader (seconds per frame) one stop, Email, was
+  measured 6 s after focus, before its frame had finished fading in.
+
+### Build and production exclusion
+
+- `npm run build` passes. `wrangler.jsonc`, `package.json` and the lockfile are unchanged from `d060058`.
+- Built with `WORKERS_CI_BRANCH=main`: no `theme-lab`, no overlay code (26 files). With
+  `WORKERS_CI_BRANCH=feat/mobile-refinement`: the theme lab (5 pages) and the overlay chunk are included. A local build
+  without `PREVIEW_TOOLS=1` includes neither. On production `/theme-lab.html` falls through to the site.
+
+### Still to verify on real devices
+
+Nothing here ran on a phone GPU, in Samsung Internet itself, or on the laptop that stutters. Before merging:
+
+1. **Samsung Internet, phone in dark mode:** open `/theme-lab.html` on the preview and screenshot the four tiles (and
+   each opened on its own). If any tile stays light, the site can adopt that declaration. Then scroll the site: text
+   should sit on surfaces everywhere, never light on light.
+2. **Samsung Internet, light mode:** no cursor ring after touching, "Tap" wording, Also Built rows open and close, the
+   ^ button never over text at rest.
+3. **Phone and laptop, `?perf`:** open the preview with `?perf`, wait for the page, tap "Run scripted path" and leave
+   the device untouched for about a minute, then "Copy report". The same fifteen legs run on both devices; the report
+   lists frame times per leg and the render resolution, which should not change during the run.
+4. **Ship on the laptop:** scroll into and out of Blue Marine in both directions; the hull should always enter from
+   the left edge and leave past the right.
