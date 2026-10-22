@@ -7,6 +7,7 @@
   --ink: #122027;
   --ink-2: #233a43;
   --slate: #5A747C;
+  --slate-text: #48616a; /* slate for small text: 5.7:1 on the light copy panels (WCAG AA), where #5A747C is ~4.3:1 */
   --rule: rgba(18, 32, 39, .2);
   --copper: #F28A28;
   --gold: #D8AE61;
@@ -19,8 +20,15 @@
   --top: calc(env(safe-area-inset-top, 0px) + clamp(76px, 12vh, 104px));
   --bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(24px, 4.5vh, 40px));
   --ease: cubic-bezier(.16, 1, .3, 1);
-  color-scheme: light;
+  /* "only": the browser must not auto-darken the page (see the meta tag in index.html) */
+  color-scheme: only light;
 }
+
+/* Samsung Internet's adaptive dark mode (an experimental flag in v26+) keeps a page's own colours when the page has
+   prefers-color-scheme: dark rules; this one repeats the light palette, so the page stays as designed. Chrome's
+   automatic dark theme is switched off by color-scheme: only light above. (Samsung's default forced dark mode ignores
+   both; see docs/mobile-remediation.md.) */
+@media (prefers-color-scheme: dark) { :root { --mist: #D8EBEF; --ink: #122027; --cream: #F3F3EC; } }
 
 * { box-sizing: border-box; }
 html { background: var(--mist); }
@@ -44,7 +52,9 @@ button { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--copper); outline-offset: 4px; border-radius: 2px; }
 .sr { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-.stage { position: fixed; inset: 0; z-index: 0; background: linear-gradient(180deg, #2a80b8 0%, var(--sky) 45%, var(--mist) 100%); }
+/* the canvas is sized to the large viewport, so a phone's collapsing address bar never resizes it (which would
+   re-fit every scene mid-scroll); the frames above it use the small viewport and stay clear of the browser UI */
+.stage { position: fixed; left: 0; top: 0; width: 100%; height: 100vh; height: 100lvh; z-index: 0; background: linear-gradient(180deg, #2a80b8 0%, var(--sky) 45%, var(--mist) 100%); }
 .stage canvas { display: block; touch-action: pan-y; }
 .nogl { position: absolute; inset: 0; }
 .still { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
@@ -52,10 +62,13 @@ button { font: inherit; color: inherit; }
 .still--light .still__title { color: #fff; text-shadow: 0 2px 30px rgba(11, 58, 87, .25); }
 .still__title em { font-family: var(--serif); font-weight: 400; letter-spacing: -.01em; }
 .still__img { position: absolute; right: 12vw; bottom: 0; height: 84vh; width: auto; max-width: none; -webkit-mask-image: linear-gradient(180deg, #000 80%, transparent); mask-image: linear-gradient(180deg, #000 80%, transparent); }
-@media (max-width: 760px), (max-aspect-ratio: 4/5) { .still__img { right: -6vw; height: 58vh; } }
+@media (max-width: 760px) and (max-aspect-ratio: 4/3), (max-aspect-ratio: 4/5) { .still__img { right: -6vw; height: 58vh; } }
+/* film grain: plain alpha blending of a grey noise tile. It used mix-blend-mode: overlay, which makes the browser
+   composite the whole page (the WebGL canvas included) into an offscreen surface every frame just to blend 7% of
+   noise over it: a full-screen extra pass per frame, felt most on phones and integrated laptop GPUs. */
 .grain {
-  position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: .07; mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: .045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* loading curtain: a bank of mist that lifts when the world is compiled */
@@ -77,13 +90,13 @@ html.is-ready .curtain { opacity: 0; visibility: hidden; filter: blur(12px); poi
   letter-spacing: .16em; text-transform: uppercase; color: var(--slate);
 }
 .eyebrow--row { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; }
-.tag { padding: 3px 8px 2px; border: 1px solid currentColor; border-radius: 99px; color: #b85f12; letter-spacing: .12em; }
+.tag { padding: 3px 8px 2px; border: 1px solid currentColor; border-radius: 99px; color: #9a4a0c; letter-spacing: .12em; }
 .display {
   margin: 0; font-weight: 600; letter-spacing: -.045em; line-height: .92;
   font-size: clamp(2.7rem, min(7.6vw, 13vh), 8.4rem); text-wrap: balance;
 }
 .display--sm { font-size: clamp(2.3rem, min(5.4vw, 10vh), 6rem); }
-.display em, .work__head em { font-family: var(--serif); font-style: italic; font-weight: 400; letter-spacing: -.01em; }
+.display em, .work__head-line em { font-family: var(--serif); font-style: italic; font-weight: 400; letter-spacing: -.01em; }
 .ln { padding-bottom: .08em; margin-bottom: -.08em; }
 
 /* ---------- nav ---------- */
@@ -136,8 +149,7 @@ html[data-tone="ink"] .nav { color: var(--ink); text-shadow: none; }
   font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; text-decoration: none;
   border-radius: 99px; border: 1px solid rgba(18, 32, 39, .35); color: var(--ink);
   transition: background .4s var(--ease), color .4s var(--ease), border-color .4s var(--ease), transform .2s var(--ease);
-  position: relative; overflow: hidden; background: rgba(255, 255, 255, .18);
-  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  position: relative; overflow: hidden; background: rgba(255, 255, 255, .34);
 }
 .btn--solid { background: var(--ink); color: var(--cream); border-color: var(--ink); }
 .btn--solid::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .28) 50%, transparent 70%); transform: translateX(-120%); transition: transform .9s var(--ease); }
@@ -162,9 +174,12 @@ html[data-tone="ink"] .nav { color: var(--ink); text-shadow: none; }
   background: linear-gradient(90deg, rgba(238, 246, 248, .62) 0%, rgba(238, 246, 248, .38) 30%, rgba(238, 246, 248, 0) 48%);
 }
 .work { display: grid; gap: clamp(8px, 1.6vh, 15px); width: min(31rem, 39vw); }
+/* the copy's wrappers only take part in the phone layout; on wide screens they leave the grid exactly as it was */
+.work__clip, .work__head, .work__detail { display: contents; }
+.copybed { display: none; }
 .work__name { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; font-family: var(--mono); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink); }
 .work__name span { font-size: 11px; letter-spacing: .1em; color: var(--slate); }
-.work__head { margin: 0; font-size: clamp(2.1rem, min(4.6vw, 8vh), 5.2rem); line-height: .95; font-weight: 600; letter-spacing: -.045em; text-wrap: balance; }
+.work__head-line { margin: 0; font-size: clamp(2.1rem, min(4.6vw, 8vh), 5.2rem); line-height: .95; font-weight: 600; letter-spacing: -.045em; text-wrap: balance; }
 .work__body { margin: 0; font-size: clamp(14.5px, 1.05vw, 17px); line-height: 1.55; color: var(--ink-2); text-wrap: pretty; }
 .facts { margin: 4px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--rule); }
 .facts div { padding: clamp(6px, 1.2vh, 11px) 0 clamp(5px, 1vh, 9px); border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -275,7 +290,7 @@ html[data-tone="ink"] .nav { color: var(--ink); text-shadow: none; }
 .link {
   font-family: var(--mono); font-size: 12px; letter-spacing: .18em; text-transform: uppercase; text-decoration: none;
   padding: 14px 22px 13px; border-radius: 99px; border: 1px solid rgba(18, 32, 39, .35); color: var(--ink);
-  background: rgba(255, 255, 255, .3); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  background: rgba(255, 255, 255, .48);
   transition: background .35s var(--ease), color .35s, border-color .35s;
 }
 .link--solid { background: var(--ink); color: var(--cream); border-color: var(--ink); }
@@ -287,6 +302,7 @@ html[data-tone="ink"] .nav { color: var(--ink); text-shadow: none; }
 .foot { position: absolute; left: var(--gutter); right: var(--gutter); bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--slate); }
 
 /* ---------- cursor ---------- */
+html:not(.has-cursor) .cur, html:not(.has-cursor) .cur-ring { display: none; }
 .cur, .cur-ring { position: fixed; left: 0; top: 0; z-index: 100; pointer-events: none; border-radius: 50%; transition: opacity .3s; }
 .cur { width: 6px; height: 6px; margin: -3px 0 0 -3px; background: var(--ink); }
 .cur-ring { width: 30px; height: 30px; margin: -15px 0 0 -15px; border: 1px solid rgba(18, 32, 39, .45); transition: width .35s var(--ease), height .35s var(--ease), margin .35s var(--ease), border-color .35s, background .35s, opacity .3s; }
@@ -310,63 +326,261 @@ html[data-tone="ink"] .nav { color: var(--ink); text-shadow: none; }
   .ms__mark { font-size: clamp(2.2rem, 8vh, 3.4rem); }
 }
 
-/* ---------- phone: recompose, don't just stack ---------- */
-@media (max-width: 760px), (max-aspect-ratio: 4/5) {
-  :root { --top: calc(env(safe-area-inset-top, 0px) + 72px); --bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); }
+/* ======================================================================================================
+   Small screens. One system, three cases:
+   - landscape phones (a frame under ~500px tall): the side-by-side layout in a tighter rhythm; a project column
+     taller than the frame scrolls inside it (scroll.ts)
+   - phones and portrait tablets: the scene above, the copy below on one continuous surface. Each project's panel
+     shows its head first and reveals its detail as the section scrolls (scroll.ts); the camera fits the scene into
+     the band left above the panel (Film.tsx)
+   - portrait tablets: the phone composition with larger type
+   Type on phones: reading text 16px / 1.55, labels 12px, small text in --slate-text (AA on the copy surfaces).
+   Every text group sits on a surface of its own, so it stays readable over bright cloud, and if a browser forces its
+   own dark theme (Samsung Internet) the surfaces turn dark with the text turned light, never light on light.
+   ====================================================================================================== */
+
+/* ---------- landscape phones ---------- */
+@media (max-height: 500px) and (min-aspect-ratio: 4/3) {
+  :root { --top: calc(env(safe-area-inset-top, 0px) + 62px); --bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); }
+  html.ua-samsung { --bottom: calc(env(safe-area-inset-bottom, 0px) + 60px); }
+  .hero__loc, .scrollcue, .hero__labels { display: none; }
+  .hero__foot { gap: 10px; max-width: none; }
+  .hero__copy { max-width: min(22rem, 40vw); font-size: 15px; line-height: 1.45; } /* clear of the figure */
+  .btn { padding: 11px 16px 10px; font-size: 11px; }
+  .frame--work { align-content: stretch; padding-top: calc(var(--top) + 8px); }
+  .frame--work::before { background: linear-gradient(90deg, rgba(238, 246, 248, .8) 0%, rgba(238, 246, 248, .55) 42%, rgba(238, 246, 248, 0) 60%); }
+  /* a column taller than the frame scrolls under feathered edges, clear of the nav */
+  .work__clip {
+    display: grid; align-content: start; align-content: safe center; height: 100%; overflow: hidden;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 22px, #000 calc(100% - 12px), transparent);
+    mask-image: linear-gradient(180deg, transparent 0, #000 22px, #000 calc(100% - 12px), transparent);
+  }
+  .work { width: min(30rem, 48vw); gap: 8px; padding: 10px 0; }
+  .work__head, .work__detail { display: grid; gap: 8px; }
+  .work .eyebrow, .work__name { font-size: 11.5px; }
+  .work__name span { font-size: 11px; color: var(--slate-text); }
+  .work__head-line { font-size: clamp(1.5rem, 7.5vh, 2rem); }
+  .work__body { font-size: 15px; line-height: 1.5; color: #1c3139; }
+  .work__note { display: none; }
+  .facts dt { font-size: 11px; color: var(--slate-text); }
+  .facts dd { font-size: 16px; }
+  .work__stack { font-size: 11.5px; }
+  .frame--other { gap: 8px; align-content: start; align-content: safe center; }
+  .others { width: min(46rem, 64vw); }
+  .others li { padding: 7px 0; }
+  .others__name { font-size: clamp(1.3rem, 6.4vh, 1.7rem); }
+  .others__desc { margin-top: 3px; font-size: 14px; line-height: 1.4; color: #1c3139; }
+  .others__metric, .others__stack { padding-top: 3px; }
+  .readout { min-height: 0; width: min(19rem, 46vw); } /* the bench takes the space to its right (toolkitBand) */
+  .readout__name { font-size: 22px; }
+  /* the live state line joins the column (it would be clipped at the frame's foot), and the AI Chatbot's hint moves to
+     the free corner under its scene, clear of the column's first line */
+  .state { position: static; margin-top: 2px; font-size: 11.5px; }
+  .hint { top: auto; bottom: var(--bottom); }
+  /* the nav sits over bright cloud here: a faint scrim behind it keeps its text legible in either tone */
+  .nav { padding-bottom: 16px; background: linear-gradient(180deg, rgba(20, 72, 104, .26), rgba(20, 72, 104, 0)); }
+  html[data-tone="ink"] .nav { background: linear-gradient(180deg, rgba(240, 247, 249, .8), rgba(240, 247, 249, 0)); }
+  /* every text group on a surface, as on phones: it holds over bright cloud, and if a browser forces its own dark theme
+     the surface turns dark under light text instead of leaving light text on a light sky */
+  .sec--hero .frame::before, .frame--toolkit::before, .frame--other::before, .frame--contact::before {
+    content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background: linear-gradient(90deg, rgba(238, 246, 248, .76) 0%, rgba(238, 246, 248, .5) 40%, rgba(238, 246, 248, 0) 60%);
+  }
+  .sec--hero .frame::before { background: radial-gradient(58% 52% at 0% 100%, rgba(238, 246, 248, .8), rgba(238, 246, 248, 0)); } /* not over the title */
+  .frame--other::before { background: linear-gradient(90deg, rgba(238, 246, 248, .8) 0%, rgba(238, 246, 248, .6) 52%, rgba(238, 246, 248, 0) 78%); }
+  .rec__intro { background: linear-gradient(90deg, rgba(251, 245, 237, .72) 0%, rgba(251, 245, 237, .45) 36%, rgba(251, 245, 237, 0) 58%); }
+  .tk__rail { margin: 0 -10px -6px; padding: 6px 10px; border-radius: 12px; background: rgba(236, 245, 247, .5); }
+  .tk__rail button { color: var(--ink-2); }
+}
+@media (max-height: 500px) and (min-aspect-ratio: 4/3) and (max-width: 760px) {
+  .work { width: min(30rem, 53vw); }
+  .work__head-line { font-size: clamp(1.4rem, 7vh, 1.8rem); }
+}
+/* Samsung Internet on wide layouts (a Galaxy tablet in landscape, DeX): its default dark mode ignores the page's
+   colour scheme, so the text groups get the same surfaces as on phones there; other browsers keep the open sky */
+@media (min-width: 761px) and (min-aspect-ratio: 4/5) and (min-height: 501px) {
+  html.ua-samsung .sec--hero .frame::before, html.ua-samsung .frame--other::before, html.ua-samsung .frame--contact::before {
+    content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background: linear-gradient(90deg, rgba(238, 246, 248, .74) 0%, rgba(238, 246, 248, .46) 34%, rgba(238, 246, 248, 0) 52%);
+  }
+  html.ua-samsung .sec--hero .frame::before { background: radial-gradient(40% 36% at 0% 100%, rgba(238, 246, 248, .8), rgba(238, 246, 248, 0)); }
+  /* the bench owns the middle of the toolkit, so its title and readout get bands of their own */
+  html.ua-samsung .tk__head, html.ua-samsung .readout {
+    margin-left: calc(var(--gutter) * -1); padding: 8px 0 8px var(--gutter);
+    background: linear-gradient(90deg, rgba(236, 245, 247, .72), rgba(236, 245, 247, .42) 60%, rgba(236, 245, 247, 0));
+  }
+  html.ua-samsung .frame--other::before { background: linear-gradient(90deg, rgba(238, 246, 248, .8) 0%, rgba(238, 246, 248, .6) 46%, rgba(238, 246, 248, 0) 70%); }
+  html.ua-samsung .rec__intro { background: linear-gradient(90deg, rgba(251, 245, 237, .72) 0%, rgba(251, 245, 237, .45) 30%, rgba(251, 245, 237, 0) 50%); }
+  html.ua-samsung .tk__rail { margin: 0 -12px -6px; padding: 8px 12px; border-radius: 12px; background: rgba(236, 245, 247, .55); }
+  html.ua-samsung .tk__rail button { color: var(--ink-2); }
+  /* the nav over open sky: a scrim in its own tone, as on phones */
+  html.ua-samsung .nav { padding-bottom: 16px; background: linear-gradient(180deg, rgba(20, 72, 104, .24), rgba(20, 72, 104, 0)); }
+  html.ua-samsung[data-tone="ink"] .nav { background: linear-gradient(180deg, rgba(240, 247, 249, .8), rgba(240, 247, 249, 0)); }
+}
+/* touch: Also Built only opens the space for a project's metric and stack under the one that's tapped */
+html.is-touch .others li:not(.is-on) .others__more { display: none; }
+
+/* ---------- phones and portrait tablets ---------- */
+@media (max-width: 760px) and (max-aspect-ratio: 4/3), (max-aspect-ratio: 4/5) {
+  :root { --top: calc(env(safe-area-inset-top, 0px) + 72px); --bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); }
+  /* Samsung Internet floats its own scroll-to-top button over the bottom of the page: text keeps clear of it */
+  html.ua-samsung { --bottom: calc(env(safe-area-inset-bottom, 0px) + 70px); }
+
+  /* type */
+  .eyebrow { font-size: 12px; letter-spacing: .1em; color: var(--slate-text); }
+  .display--sm { font-size: clamp(2.3rem, 10.4vw, 3rem); }
+
+  /* nav: a soft scrim in the nav's own tone, so it reads over any sky */
+  .nav { padding-bottom: 14px; background: linear-gradient(180deg, rgba(20, 72, 104, .22), rgba(20, 72, 104, 0)); }
+  html[data-tone="ink"] .nav { background: linear-gradient(180deg, rgba(240, 247, 249, .82), rgba(240, 247, 249, 0)); }
+  .nav__name { font-size: 17px; }
+  .nav__role { font-size: 11px; letter-spacing: .12em; opacity: .9; }
   .nav__links { display: none; }
   .nav__talk {
-    display: block; text-decoration: none; font-family: var(--mono); font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase;
-    padding: 9px 13px 8px; border: 1px solid currentColor; border-radius: 99px; text-shadow: none;
+    display: block; text-decoration: none; font-family: var(--mono); font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase;
+    padding: 11px 15px 10px; border: 1px solid currentColor; border-radius: 99px; text-shadow: none;
   }
-  .hero__labels { font-size: 10px; gap: 4px 14px; }
+
+  /* hero */
+  .hero__labels { font-size: 11.5px; gap: 4px 14px; }
+  .hero__copy { font-size: 16.5px; line-height: 1.5; }
   .hero__loc, .scrollcue { display: none; }
   .hero__foot {
-    left: 0; right: 0; max-width: none; padding: 64px var(--gutter) 0;
-    background: linear-gradient(180deg, transparent, rgba(243, 247, 246, .8) 36%);
+    left: 0; right: 0; max-width: none; padding: 56px var(--gutter) 0;
+    background: linear-gradient(180deg, rgba(243, 247, 246, 0) 0, rgba(243, 247, 246, .9) 56px);
   }
-  .frame--work { align-content: end; }
+
+  /* about: a soft halo behind the statement */
+  .frame--center::before {
+    content: ''; position: absolute; left: -12%; right: -12%; top: 18%; bottom: 10%; z-index: -1; pointer-events: none;
+    background: radial-gradient(50% 50% at 50% 50%, rgba(240, 247, 249, .84) 0, rgba(240, 247, 249, .74) 55%, rgba(240, 247, 249, 0) 100%);
+  }
+  .lede { font-size: 16.5px; }
+
+  /* projects: the copy panel (positioned by scroll.ts) on one continuous surface */
+  .frame--work { display: block; padding: 0 0 var(--bottom); }
   .frame--work::before { display: none; }
-  .work {
-    width: auto; gap: 8px; padding: 64px var(--gutter) 0; margin: 0 calc(var(--gutter) * -1);
-    background: linear-gradient(180deg, transparent, rgba(232, 243, 246, .92) 24%);
+  .copybed {
+    display: block; position: fixed; left: 0; right: 0; top: 0; height: 100vh; height: 100lvh; pointer-events: none; opacity: 0;
+    background: linear-gradient(180deg, rgba(234, 244, 247, 0) 0, rgba(234, 244, 247, .9) 30px, rgba(232, 243, 246, .96) 100%);
+    will-change: transform, opacity;
   }
-  .work__head { font-size: clamp(2rem, 9vw, 2.8rem); }
-  .work__body { font-size: 14px; line-height: 1.5; }
-  .work__note { font-size: 12px; }
-  .facts dd { font-size: 16px; }
-  .state { position: static; margin-top: 10px; }
-  .hint, .legend { top: var(--top); left: var(--gutter); right: auto; justify-content: flex-start; }
-  .tk__foot { gap: 14px; }
+  .work__clip {
+    display: block; position: absolute; left: 0; right: 0; top: 0; height: 100%; will-change: transform;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 28px); mask-image: linear-gradient(180deg, transparent 0, #000 28px);
+  }
+  /* the panel's foot: copy scrolling inside the panel fades out before the bottom margin, so it never runs under the
+     browser's own controls (Samsung Internet floats its scroll-to-top button there). A band in the surface's colour,
+     not a mask: the clip moves, the margin does not */
+  .frame--work::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; z-index: 1; pointer-events: none; height: calc(var(--bottom) + 18px);
+    background: linear-gradient(180deg, rgba(232, 243, 246, 0), rgba(232, 243, 246, .96) 18px);
+  }
+  .work { position: absolute; left: 0; right: 0; top: 0; width: auto; display: grid; gap: 14px; padding: 30px var(--gutter) 0; will-change: transform; }
+  .work__head { display: grid; gap: 8px; }
+  .work__detail { display: grid; gap: 14px; will-change: opacity; }
+  .work .eyebrow { color: var(--ink-2); }
+  .work__name { font-size: 13px; }
+  .work__name span { font-size: 12px; color: var(--slate-text); }
+  .work__head-line { font-size: clamp(2.1rem, 9.6vw, 2.75rem); }
+  .work__body { font-size: 16px; line-height: 1.55; color: #1c3139; }
+  .work__note { display: none; } /* the one note restates its project's first fact */
+  .work__stack { font-size: 12px; line-height: 1.5; }
+  .facts { margin: 0; }
+  .facts div { padding: 9px 0 8px; }
+  .facts dt { font-size: 11.5px; letter-spacing: .08em; color: var(--slate-text); }
+  .facts dd { font-size: 18px; }
+  .state { position: static; margin-top: 2px; font-size: 12.5px; letter-spacing: .12em; }
+  .hint, .legend { top: var(--top); left: var(--gutter); right: auto; justify-content: flex-start; font-size: 12px; letter-spacing: .1em; color: var(--ink-2); }
+
+  /* toolkit: title above, bench in the band, readout and index on their own surface below. The readout keeps one
+     height whether or not a tool is selected, so selecting never moves the bench */
   .sec--toolkit .display--sm { white-space: normal; }
-  .readout { min-height: 0; }
+  /* the title on a soft band of its own (over bright cloud, and dark if a browser forces its own dark theme) */
+  .tk__head {
+    margin: -10px calc(var(--gutter) * -1) 0; padding: 10px var(--gutter) 18px;
+    background: linear-gradient(180deg, rgba(236, 245, 247, 0) 0, rgba(236, 245, 247, .62) 10px, rgba(236, 245, 247, .62) calc(100% - 18px), rgba(236, 245, 247, 0));
+  }
+  .tk__foot {
+    gap: 12px; margin: 0 calc(var(--gutter) * -1) calc(var(--bottom) * -1); padding: 26px var(--gutter) var(--bottom);
+    background: linear-gradient(180deg, rgba(236, 245, 247, 0), rgba(236, 245, 247, .92) 26px);
+  }
+  .readout { min-height: 118px; align-content: end; gap: 3px; } /* the hint sits with the index; a selection grows upward */
   .readout__name { font-size: 26px; }
+  .readout__role { font-size: 16px; }
+  .readout__rel { font-size: 12px; }
   .tk__rail { justify-items: start; max-width: none; width: 100%; }
   .tk__rail .eyebrow { display: none; }
-  .tk__rail ul { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; gap: 0 14px; max-width: calc(100vw - var(--gutter) * 2); scrollbar-width: none; }
-  .tk__rail ul::-webkit-scrollbar { display: none; }
-  .tk__rail button { white-space: nowrap; padding: 8px 0; }
-  .frame--other { align-content: end; }
-  .others { width: auto; }
-  .others li { grid-template-columns: 2rem minmax(0, 1fr); column-gap: 10px; padding: 12px 0; }
-  .others__name { font-size: clamp(1.7rem, 8.4vw, 2.4rem); }
-  .others__desc { font-size: 13px; margin-top: 6px; }
+  .tk__rail ul { flex-wrap: wrap; justify-content: flex-start; gap: 0 16px; max-width: 100%; }
+  .tk__rail button { white-space: nowrap; padding: 9px 0; min-height: 40px; font-size: 12.5px; letter-spacing: .06em; color: var(--slate-text); }
+
+  /* also built: the objects in the top third, the list right under them on its own surface */
+  .frame--other { align-content: start; gap: 0; padding-top: calc(var(--top) + 26vh - 12px); padding-top: calc(var(--top) + 26svh - 12px); }
+  /* the label and hint share the list's surface */
+  .other__head {
+    margin: 0 calc(var(--gutter) * -1); padding: 14px var(--gutter) 10px;
+    background: linear-gradient(180deg, rgba(236, 245, 247, 0) 0, rgba(236, 245, 247, .55) 12px);
+  }
+  .other__hint { font-size: 12px; opacity: 1; color: var(--slate-text); }
+  .others {
+    width: auto; margin: 0 calc(var(--gutter) * -1); padding: 0 var(--gutter);
+    background: linear-gradient(180deg, rgba(236, 245, 247, .55), rgba(236, 245, 247, .9) 40px);
+  }
+  .others li { grid-template-columns: 2rem minmax(0, 1fr); column-gap: 10px; padding: 12px 0 13px; }
+  .others.has-on li:not(.is-on) { opacity: .62; }
+  .others__num { font-size: 12px; color: var(--slate-text); }
+  .others__name { font-size: clamp(1.75rem, 8vw, 2.3rem); }
+  .others__desc { font-size: 16px; line-height: 1.5; margin-top: 6px; color: #1c3139; }
+  .others__metric, .others__stack { font-size: 12px; color: var(--slate-text); padding-top: 8px; }
+
+  /* record: a soft band behind the title */
+  .rec__intro {
+    margin-top: -10px; padding-top: 18px; padding-bottom: 18px;
+    background: linear-gradient(180deg, rgba(251, 245, 237, 0) 0, rgba(251, 245, 237, .64) 12px, rgba(251, 245, 237, .64) calc(100% - 18px), rgba(251, 245, 237, 0));
+  }
   .ms { width: 72vw; }
   .ms__mark { font-size: 2.6rem; }
   .track { padding-bottom: 12vh; }
-  /* phone: the text group sits in the upper half; the figure stands in the clouds beneath it, offset right */
+  .rec__still ul { font-size: 16px; }
+
+  /* contact: the text group on a soft surface in the upper half; the figure rises from the clouds beneath it */
   .frame--contact { align-content: start; }
-  .contact { padding: 0; max-width: none; gap: 14px; }
+  .contact {
+    padding: 22px var(--gutter) 30px; margin: -14px calc(var(--gutter) * -1) 0; max-width: none; gap: 14px;
+    background: linear-gradient(180deg, rgba(240, 247, 249, 0) 0, rgba(240, 247, 249, .76) 18px, rgba(240, 247, 249, .7) calc(100% - 30px), rgba(240, 247, 249, 0) 100%);
+  }
   .cta__title { font-size: clamp(2.6rem, 12.5vw, 3.6rem); }
+  .contact__copy { font-size: 17px; }
   .contact__links { justify-content: flex-start; }
+  .link { font-size: 12px; padding: 14px 20px 13px; }
+  .contact__addr { font-size: 14px; }
+  .copy { font-size: 12px; color: var(--slate-text); }
+  .foot {
+    font-size: 11px; letter-spacing: .1em; color: var(--slate-text); left: 0; right: 0; bottom: 0;
+    padding: 22px var(--gutter) var(--bottom); background: linear-gradient(180deg, rgba(240, 247, 249, 0), rgba(240, 247, 249, .72) 20px);
+  }
 }
-@media (max-width: 760px) and (max-height: 720px) {
-  .work__note, .work__stack { display: none; }
-  .work__body { font-size: 13px; }
+
+/* ---------- portrait tablets: the phone composition with type and spacing for the larger canvas ---------- */
+@media (max-aspect-ratio: 4/5) and (min-width: 600px) {
+  :root { --gutter: 44px; --top: calc(env(safe-area-inset-top, 0px) + 92px); }
+  .hero__labels { font-size: 12px; }
+  .hero__foot p { font-size: 18px; }
+  .work { padding-top: 34px; gap: 16px; }
+  .work__head-line { font-size: clamp(3rem, 7.4vw, 4.4rem); }
+  .work__body { font-size: 18px; max-width: 40rem; }
+  .facts { max-width: 40rem; }
+  .facts dd { font-size: 20px; }
+  .others__name { font-size: clamp(2.4rem, 6vw, 3.2rem); }
+  .others__desc { font-size: 17px; max-width: 40rem; }
+  .readout__name { font-size: 34px; }
+  .tk__rail button { font-size: 13px; }
+  .cta__title { font-size: clamp(4rem, 10vw, 5.6rem); }
+  .contact__copy { font-size: 19px; max-width: 30rem; }
+  .rec__intro .display--sm { font-size: clamp(2.6rem, 6vw, 3.6rem); }
 }
+
 @media (prefers-reduced-motion: reduce) {
   .scrollcue i::after, .state--hold i, .curtain i::after { animation: none; }
   .curtain { transition-duration: .3s; }
-}
-@media (max-width: 760px), (max-aspect-ratio: 4/5) {
-  .rec__still ul { font-size: 15px; }
 }

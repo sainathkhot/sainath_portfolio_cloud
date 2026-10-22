@@ -25,6 +25,11 @@ const EAGLE_GLB: string | null = Object.values(found)[0] ?? null
 const GLB_YAW = 0
 
 const REC = 9 // record section index
+/**
+ * Aircraft size multiplier, applied to every pass. 1 restores the original size recorded in
+ * docs/portfolio-visual-baseline.md (per-pass `craft` values in layout() are the baseline numbers).
+ */
+const CRAFT_SIZE = 1.1
 const Z = -156 // banner plane
 // banner sizes (top rod centre is the origin). The second banner carries more text, so it is a little wider and
 // taller than the first; phones get a narrower, taller cloth so the type can stay large
@@ -267,7 +272,7 @@ function Banner({ which, refs, dims }: { which: 0 | 1; refs: React.MutableRefObj
   // a right-aligned date column on the right card
   const ph = S.narrow
   const B2 = which === 1 // the experience card: more lines, so more room between them
-  const pad = ph ? (B2 ? 0.25 : 0.22) : (B2 ? 0.35 : 0.32)
+  const pad = ph ? (B2 ? 0.24 : 0.19) : (B2 ? 0.35 : 0.32)
   const L = -BW / 2 + pad, R = BW / 2 - pad, iw = BW - 2 * pad
   const ink = '#122027', slate = '#526a72', copper = '#a8581b'
   const eyebrowY = -(SLEEVE + 0.25)
@@ -276,7 +281,7 @@ function Banner({ which, refs, dims }: { which: 0 | 1; refs: React.MutableRefObj
   const rows = [0, 1, 2].map((i) => y0 - i * step)
   const col = ph ? 0.72 : 0.98
   const f = ph
-    ? { eyebrow: 0.08, mark: 0.26, title: 0.13, detail: 0.1, role: 0.158, org: 0.106, year: 0.096, edu: 0.11 }
+    ? { eyebrow: 0.086, mark: 0.26, title: 0.132, detail: 0.104, role: 0.162, org: 0.116, year: 0.102, edu: 0.116 }
     : { eyebrow: 0.078, mark: 0.3, title: 0.132, detail: 0.098, role: 0.172, org: 0.106, year: 0.096, edu: 0.124 }
   const RO = 7
   const rule = (y: number, key: string) => (
@@ -444,7 +449,7 @@ export function Delivery() {
   const L = useMemo(() => layout(narrow, aspect), [narrow, aspect])
   const glb = useGlbEagle()
   const isEagle = !!glb
-  const crafts = useMemo(() => L.craft.map((c) => (isEagle ? c * 1.1 : c)), [L, isEagle])
+  const crafts = useMemo(() => L.craft.map((c) => c * CRAFT_SIZE * (isEagle ? 1.1 : 1)), [L, isEagle])
   const rel = useMemo(() => [0, 1].map((i) => releaseU(L.paths[i], L.release[i], crafts[i], isEagle, L.drop[i])), [L, crafts, isEagle])
   const craft = useMemo(buildCraft, [])
   useEffect(() => () => craft.dispose(), [craft])

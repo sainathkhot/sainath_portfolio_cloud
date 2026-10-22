@@ -12,3 +12,6 @@ import { App } from './App'
 import './styles.css'
 
 createRoot(document.getElementById('root')!).render(<App />)
+
+// preview builds only: the ?perf overlay (frame times, render resolution, a scripted scroll path); compiled out of main
+if (__PREVIEW_TOOLS__ && new URLSearchParams(location.search).has('perf')) import('./ui/PerfHud').then((m) => m.mountPerfHud())

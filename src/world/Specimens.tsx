@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
-import { S, damp, sstep, hash, togglePin } from '../store'
+import { S, damp, sstep, hash, togglePin, hovers } from '../store'
 import { FOV } from './Stage'
 import { useCanvasTexture, paperGrain, MONO, SANS, type Draw } from './Artifacts'
 
@@ -28,7 +28,13 @@ export function Specimens() {
   const base = useMemo(() => {
     const aspect = size.width / size.height
     const hw = Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * aspect * 9
-    return S.narrow ? new THREE.Vector3(0, 5.88, SPEC_Z) : new THREE.Vector3(Math.min(0.55 * hw, 3.0), 4.25, SPEC_Z)
+    // phones: centred in the band the list leaves free at the top (from under the nav to ~27% down, styles.css)
+    if (S.narrow) {
+      const visH = 2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * 9.6
+      const f = (72 + 0.135 * size.height) / size.height // fraction of the frame height, from the top
+      return new THREE.Vector3(0, 4.05 + (1 - 2 * f) * (visH / 2), SPEC_Z)
+    }
+    return new THREE.Vector3(Math.min(0.55 * hw, 3.0), 4.25, SPEC_Z)
   }, [size.width, size.height])
 
   useFrame((_, dtRaw) => {
@@ -39,7 +45,7 @@ export function Specimens() {
     root.current.visible = on
     if (!on) { if (S.specHover >= 0) S.specHover = -1; return }
     root.current.position.set(base.x + S.px * 0.25, base.y - (1 - ar) * 2.2 + S.py * 0.12, base.z)
-    root.current.scale.setScalar((S.narrow ? 0.54 : 1.3) * ar)
+    root.current.scale.setScalar((S.narrow ? 0.66 : 1.3) * ar)
     NONE = damp(NONE, S.atmos < 0 ? 1 : 0, 6, dt)
     for (let i = 0; i < N; i++) {
       W[i] = damp(W[i], S.atmos === i ? 1 : 0, 6, dt)
@@ -63,7 +69,7 @@ export function Specimens() {
   const hit = (i: number) => (
     <mesh
       material={HIT}
-      onPointerOver={(e) => { e.stopPropagation(); S.specHover = i }}
+      onPointerOver={(e) => { e.stopPropagation(); if (hovers(e)) S.specHover = i }}
       onPointerOut={() => { if (S.specHover === i) S.specHover = -1 }}
       // a tap on a list row (or a link) is handled by that element, so one gesture is only ever one toggle
       onClick={(e) => { e.stopPropagation(); if (S.touch && !(e.nativeEvent.target as Element)?.closest?.('.others, a, button')) togglePin(i) }}

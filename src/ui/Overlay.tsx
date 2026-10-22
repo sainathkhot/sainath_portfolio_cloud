@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { LINKS, PERSON, PROJECTS, OTHER_WORK, BANNERS, SECTION_VH, TOOLS, type Headline as H, type ToolId } from '../content'
-import { S, subscribe, emit, togglePin } from '../store'
+import { S, subscribe, emit, togglePin, hovers } from '../store'
 import { goToFilm, STOPS } from './scroll'
 import portraitUrl from '../portrait.webp'
 
@@ -16,6 +16,12 @@ const go = (s: number) => (e: React.MouseEvent) => { e.preventDefault(); goToFil
 function useStore() {
   const [, force] = useState(0)
   useEffect(() => subscribe(() => force((n) => n + 1)), [])
+}
+
+/** wording that follows the input actually in use (it can change after the first touch) */
+function ByInput({ touch, mouse }: { touch: string; mouse: string }) {
+  useStore()
+  return <>{S.touch ? touch : mouse}</>
 }
 
 export function Nav() {
@@ -57,7 +63,7 @@ function ToolReadout() {
         </>
       ) : (
         <>
-          <p className="eyebrow">{S.touch ? 'Tap a material' : 'Hover a material'}</p>
+          <p className="eyebrow">{S.touch ? 'Tap a material' : 'Hover or tap a material'}</p>
           <p className="readout__role">Each one wakes the tools it works with.</p>
         </>
       )}
@@ -79,8 +85,8 @@ function ToolIndex() {
               type="button" data-cursor
               aria-pressed={S.pinTool === t.id}
               className={cur === t.id ? 'is-on' : ''}
-              onMouseEnter={() => setTool(t.id)} onMouseLeave={() => setTool(null)}
-              onFocus={() => setTool(t.id)} onBlur={() => setTool(null)}
+              onPointerEnter={(e) => { if (hovers(e)) setTool(t.id) }} onPointerLeave={(e) => { if (hovers(e)) setTool(null) }}
+              onFocus={() => { if (!S.touch) setTool(t.id) }} onBlur={() => { if (S.hoverTool === t.id) setTool(null) }}
               onClick={() => { S.pinTool = S.pinTool === t.id ? null : t.id; emit() }}
             >{t.name}</button>
           </li>
@@ -168,6 +174,8 @@ export function Overlay() {
   const projects = PROJECTS
   return (
     <main className="film">
+      {/* phones: one continuous copy surface under the five projects (positioned by scroll.ts) */}
+      <div className="copybed" aria-hidden="true" />
       {/* 0 — HERO */}
       <section {...sec('hero')} className="sec sec--hero">
         <div className="frame" data-fade="-1,0,0.16,0.34">
@@ -188,7 +196,7 @@ export function Overlay() {
 
       {/* 1 — ABOUT */}
       <section {...sec('about')} className="sec sec--about">
-        <div className="frame frame--center" data-fade="0.1,0.26,0.74,0.9">
+        <div className="frame frame--center" data-fade="0.1,0.26,0.74,0.9" data-fade-narrow="-0.14,0,0.8,0.92">
           <p className="eyebrow">Principle</p>
           <h2 className="display" data-split>Software is invisible. <br />The consequences <em>aren't.</em></h2>
           <p className="lede">A queue that stalls, an agent that guesses, a permit sent the wrong way. The systems below are drawn as the shapes they actually take, so you can see where a decision happens and who makes it.</p>
@@ -198,30 +206,38 @@ export function Overlay() {
       {/* 2-6 — PROJECTS */}
       {projects.map((p, i) => (
         <section key={p.id} {...sec(p.id)} className={`sec sec--work sec--${p.id}`}>
-          <div className="frame frame--work" data-fade="0.05,0.16,0.87,0.97">
-            <div className="work">
-              <p className="eyebrow eyebrow--row"><span>{String(i + 1).padStart(2, '0')} / {String(projects.length).padStart(2, '0')}</span><span>{p.label}</span>{'status' in p && <span className="tag">{p.status}</span>}</p>
-              <p className="work__name">{p.name}<span>{p.sub}</span></p>
-              <Head parts={p.headline} className="work__head" />
-              <p className="work__body">{p.body}</p>
-              <dl className="facts">
-                {p.facts.map(([v, k]) => (<div key={k}><dt>{k}</dt><dd>{v}</dd></div>))}
-              </dl>
-              {'note' in p && <p className="work__note">{p.note}</p>}
-              <p className="work__stack">{p.stack}</p>
+          {/* phones: the title hands over just before the boundary (out 0.94 to 0.965, the next one in from 0.975), so
+              the next project's title is already there while its scene assembles above it */}
+          <div className="frame frame--work" data-fade="0.05,0.16,0.87,0.97" data-fade-narrow="-0.025,0,0.94,0.965">
+            {/* the clip and the two parts are layout-neutral on wide screens (display: contents); on phones the copy
+                is a panel whose head arrives first and whose detail is revealed as the section scrolls (scroll.ts) */}
+            <div className="work__clip">
+              <div className="work">
+                <div className="work__head">
+                  <p className="eyebrow eyebrow--row"><span>{String(i + 1).padStart(2, '0')} / {String(projects.length).padStart(2, '0')}</span><span>{p.label}</span>{'status' in p && <span className="tag">{p.status}</span>}</p>
+                  <p className="work__name">{p.name}<span>{p.sub}</span></p>
+                  <Head parts={p.headline} className="work__head-line" />
+                  {/* the live state line narrates the 3D scene, so there is nothing to show without WebGL */}
+                  {!S.noGL && <div className="state" aria-hidden="true"><i /><span data-status={i}>&nbsp;</span></div>}
+                </div>
+                <div className="work__detail">
+                  <p className="work__body">{p.body}</p>
+                  <dl className="facts">
+                    {p.facts.map(([v, k]) => (<div key={k}><dt>{k}</dt><dd>{v}</dd></div>))}
+                  </dl>
+                  {'note' in p && <p className="work__note">{p.note}</p>}
+                  <p className="work__stack">{p.stack}</p>
+                </div>
+              </div>
             </div>
-            <div className="state" aria-hidden="true"><i /><span data-status={i}>&nbsp;</span></div>
-            {p.id === 'p2' && <p className="hint">{S.touch ? 'Layers light as the question passes' : 'Hover a layer to lift it'}</p>}
-            {p.id === 'p4' && (
-              <p className="legend"><span className="legend__fwd">Active route</span><span className="legend__back">Send-back · escalation</span></p>
-            )}
+            {p.id === 'p2' && <p className="hint"><ByInput touch="Layers light as the question passes" mouse="Hover a layer to lift it" /></p>}
           </div>
         </section>
       ))}
 
       {/* 7 — TOOLKIT */}
       <section {...sec('toolkit')} className="sec sec--toolkit">
-        <div className="frame frame--toolkit" data-fade="0.06,0.18,0.86,0.96">
+        <div className="frame frame--toolkit" data-fade="0.06,0.18,0.86,0.96" data-fade-narrow="0,0.06,0.9,0.98">
           <div className="tk__head">
             <p className="eyebrow">Toolkit</p>
             <h2 className="display display--sm" data-split>The cloud <em>workbench.</em></h2>
@@ -235,10 +251,10 @@ export function Overlay() {
 
       {/* 8 — OTHER WORK */}
       <section {...sec('other')} className="sec sec--other">
-        <div className="frame frame--other" data-fade="0.1,0.22,0.8,0.94">
+        <div className="frame frame--other" data-fade="0.1,0.22,0.8,0.94" data-fade-narrow="0,0.08,0.86,0.96">
           <div className="other__head">
             <p className="eyebrow">Also built</p>
-            <p className="other__hint">{S.touch ? 'Tap a project' : 'Hover a project'}</p>
+            <p className="other__hint"><ByInput touch="Tap a project" mouse="Hover a project" /></p>
           </div>
           <OtherList />
         </div>
@@ -246,7 +262,7 @@ export function Overlay() {
 
       {/* 9 — RECOGNITION & DELIVERY */}
       <section {...sec('record')} className="sec sec--record">
-        <div className="frame frame--record" data-fade="0.02,0.1,0.88,0.94">
+        <div className="frame frame--record" data-fade="0.02,0.1,0.88,0.94" data-fade-narrow="0.02,0.08,0.9,0.97">
           <div className="rec__intro">
             <p className="eyebrow">Record</p>
             <h2 className="display display--sm" data-split>Recognition <em>&amp; delivery.</em></h2>
@@ -257,7 +273,7 @@ export function Overlay() {
 
       {/* 10 — CONTACT */}
       <section {...sec('contact')} className="sec sec--contact">
-        <div className="frame frame--contact" data-fade="0.4,0.6,2,3">
+        <div className="frame frame--contact" data-fade="0.4,0.6,2,3" data-fade-narrow="0.02,0.14,2,3">
           {S.noGL && <StillFrame lines={[]} em="" />}
           <div className="contact">
             <h2 className="display cta__title">Let's build <br />something <em>real.</em></h2>

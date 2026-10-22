@@ -4,14 +4,19 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Text } from '@react-three/drei'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { S, sstep, local, clamp, damp, copyEdge } from '../store'
+import { claimAccent } from './Accent'
 import { FONTS } from '../lib/fonts'
 import { CloudField, cumulus, cloudSea } from './Cloud'
 import { useCanvasTexture, MONO } from './Artifacts'
 import { FOV } from './Stage'
 
+const C_GLOW = new THREE.Color('#ffb05a')
+
 // E-Parking: one vehicle at one gate, from plate to barrier.
 // A single-lane entry floats on the cloud bed; the market's canopies sit in the haze behind it.
 export const EP_Z = -100
+/** the scene's fitted scale, shared with the camera's phone framing (Film.tsx) */
+export const EP_FIT = { scale: 1 }
 const SECTION = 6
 
 const STOP_X = -0.45                       // car centre when it waits at the stop line
@@ -59,12 +64,15 @@ function useFit() {
     const aspect = size.width / size.height
     const visW = 2 * 11.5 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * aspect
     const free = S.narrow ? 1 : Math.max(0.4, (size.width - copyEdge() - 28) / size.width)
-    return clamp((visW * free * 0.95) / 9.4, 0.3, 0.95)
+    // phones: fit the gate, booth and camera rather than the whole lane (the car can arrive from off-frame), so the
+    // scene and its labels are drawn a third larger
+    return clamp((visW * free * 0.95) / (S.narrow ? 7.0 : 9.4), 0.3, 0.95)
   }, [size.width, size.height])
 }
 
 export function EParking() {
   const fit = useFit()
+  EP_FIT.scale = fit
   const root = useRef<THREE.Group>(null!)
   const car = useRef<THREE.Group>(null!)
   const wheels = useRef<THREE.Mesh[]>([])
@@ -76,7 +84,7 @@ export function EParking() {
   const posMat = useRef<THREE.MeshStandardMaterial>(null!)
   const bead = useRef<THREE.Mesh>(null!)
   const trail = useRef<THREE.Mesh>(null!)
-  const glow = useRef<THREE.PointLight>(null!)
+  const glow = useRef<THREE.Object3D>(null!)
   const labels = useRef<Record<string, any>>({})
   const st = useRef({ carX: -4.4, prevX: -4.4, beadT: 0 })
 
@@ -162,7 +170,7 @@ export function EParking() {
     screenMat.current.emissiveIntensity = 0.08 + ph.fee * 0.9 * (1 - ph.leave)
     posMat.current.emissiveIntensity = ph.pay * 1.1 * (1 - ph.leave)
     arm.current.rotation.x = -ph.access * 1.15 * (1 - sstep(0.96, 1.0, e))
-    glow.current.intensity = (ph.fee * 2.2 + ph.pay * 2.5) * (1 - ph.leave)
+    claimAccent(glow.current, (ph.fee * 2.2 + ph.pay * 2.5) * (1 - ph.leave), C_GLOW, 4.5, 1.6)
 
     // the path: a bead carries the decision from camera to barrier
     const target = ph.access > 0.5 ? T.access : ph.pay > 0.5 ? T.pay : ph.fee > 0.5 ? T.fee : ph.classify > 0.5 ? T.classify : 0
@@ -187,7 +195,7 @@ export function EParking() {
 
   const lab = (k: string) => (el: any) => { if (el) labels.current[k] = el }
   const L = (k: keyof typeof NODES, text: string, dx = 0, dy = 0.17) => (
-    <Text ref={lab(k)} font={FONTS.mono} fontSize={0.13} color="#122027" letterSpacing={0.08}
+    <Text ref={lab(k)} font={FONTS.mono} fontSize={S.narrow ? 0.2 : 0.13} color="#122027" letterSpacing={0.08}
       position={[NODES[k].x + dx, NODES[k].y + dy, NODES[k].z]} anchorX="center" anchorY="bottom" fillOpacity={0}>{text}</Text>
   )
 
@@ -215,22 +223,25 @@ export function EParking() {
         <group position={[1.32, 0.2, -1.78]}>
           <mesh geometry={geo.booth}><meshStandardMaterial color="#F3F3EC" roughness={0.55} /></mesh>
           <mesh position={[0, 0.6, 0]}><boxGeometry args={[0.72, 0.06, 0.6]} /><meshStandardMaterial color="#1d2c33" roughness={0.5} /></mesh>
-          <mesh position={[0, 0.2, 0.252]}>
+          <mesh position={[0, 0.2, 0.256]}>
             <planeGeometry args={[0.42, 0.26]} />
             <meshStandardMaterial ref={screenMat} color="#16252c" emissive="#9CD3E3" emissiveIntensity={0.08} roughness={0.3} />
           </mesh>
-          <mesh position={[0, -0.12, 0.252]}><planeGeometry args={[0.16, 0.025]} /><meshStandardMaterial color="#122027" /></mesh>
+          <mesh position={[0, -0.12, 0.256]}><planeGeometry args={[0.16, 0.025]} /><meshStandardMaterial color="#122027" /></mesh>
         </group>
         <group position={[0.82, 0.38, -1.5]} rotation={[-0.5, 0.25, 0]}>
           <mesh><boxGeometry args={[0.14, 0.03, 0.22]} /><meshStandardMaterial color="#1d2c33" roughness={0.4} /></mesh>
-          <mesh position={[0, 0.017, -0.03]} rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh position={[0, 0.02, -0.03]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[0.1, 0.11]} />
             <meshStandardMaterial ref={posMat} color="#16252c" emissive="#F28A28" emissiveIntensity={0} />
           </mesh>
         </group>
-        <pointLight ref={glow} position={[1.2, 0.9, -0.9]} color="#ffb05a" distance={4.5} decay={1.6} intensity={0} />
-        <group position={[1.95, -0.06, -1.28]}>
-          <mesh><boxGeometry args={[0.22, 0.86, 0.22]} /><meshStandardMaterial color="#1d2c33" roughness={0.5} /></mesh>
+        {/* the booth's glow: the shared accent light, placed here while fee and payment run (see Accent.tsx) */}
+        <object3D ref={glow} position={[1.2, 0.9, -0.9]} />
+        {/* The barrier post stands on the island, set back from its front face. It used to share that face exactly
+            (both at z −1.17), so the two surfaces fought for the same depth and the post's base flickered. */}
+        <group position={[1.95, -0.06, -1.36]}>
+          <mesh position={[0, 0.075, 0]}><boxGeometry args={[0.22, 0.71, 0.22]} /><meshStandardMaterial color="#1d2c33" roughness={0.5} /></mesh>
           <group ref={arm} position={[0, 0.34, 0]}>
             <mesh position={[0, 0, 1.18]} rotation={[0, Math.PI / 2, 0]}>
               <boxGeometry args={[2.36, 0.06, 0.06]} />

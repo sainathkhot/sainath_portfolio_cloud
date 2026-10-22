@@ -39,7 +39,7 @@ export function Headline({ rows, mode, avail, fill = 0.9, gap, lineHeight = 1.0,
     setLay({ sc, ox })
     onLayout?.({ ox, sc, height: rows.length * lineHeight * sc })
   }
-  useLayoutEffect(() => { solve() }, [avail, mode, gap])
+  useLayoutEffect(() => { solve() }, [avail, mode, gap, maxScale])
 
   const sync = (k: string) => (m: THREE.Mesh & { textRenderInfo?: { blockBounds: number[] } }) => {
     const b = m.textRenderInfo?.blockBounds

@@ -1,10 +1,13 @@
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useEffect, useRef } from 'react'
-import { S, bump, damp, sstep, filmFromScroll, copyEdge, toolkitBand } from '../store'
+import { S, bump, damp, sstep, filmFromScroll, copyEdge, toolkitBand, clamp, lerp } from '../store'
 import { cloudShared } from './Cloud'
 import { skyU, veilU } from './Sky'
 import { CAM_DIST } from './Stage'
+import { SYS_Z, SYS_FIT } from './System'
+import { shipMatrix, SHIP_BOX, SHIP_STATE } from './Ship'
+import { EP_Z, EP_FIT } from './EParking'
 
 type K = [s: number, pos: [number, number, number], target: [number, number, number]]
 
@@ -95,16 +98,20 @@ export function Film() {
   const { camera, size } = useThree()
   const edge = useRef(0)
   const band = useRef(0)
+  const tkLeft = useRef(0)
   // the copy column's right edge and the toolkit's free band, re-read only when the canvas changes size
   useEffect(() => {
     const read = () => {
       edge.current = copyEdge()
       const b = toolkitBand()
       band.current = b.H / 2 - (b.top + b.bottom) / 2
+      tkLeft.current = b.left
     }
     read()
     const id = window.setTimeout(read, 400) // after fonts settle
-    return () => window.clearTimeout(id)
+    let live = true
+    document.fonts?.ready.then(() => { if (live) read() }) // copy re-wraps once the web fonts arrive
+    return () => { live = false; window.clearTimeout(id) }
   }, [size.width, size.height])
   const pos = useRef(new THREE.Vector3()).current
   const tgt = useRef(new THREE.Vector3()).current
@@ -133,20 +140,19 @@ export function Film() {
     // phones: the copy owns the lower half, so the projects are lifted into the upper half the same way
     const wProj = sstep(1.9, 2.04, s) * (1 - sstep(6.9, 6.99, s))
     const wOff = S.narrow ? 0 : wProj
-    const wTk = S.narrow ? 0 : sstep(7.02, 7.12, s) * (1 - sstep(7.9, 7.98, s))
+    const wTkAll = sstep(7.02, 7.12, s) * (1 - sstep(7.9, 7.98, s))
     const offX = -(edge.current / 2) * wOff
-    const offY = S.narrow ? size.height * 0.25 * wProj : band.current * wTk
-    if (Math.abs(offX) > 0.5 || Math.abs(offY) > 0.5) cam.setViewOffset(size.width, size.height, offX, offY, size.width, size.height)
-    else if (cam.view?.enabled) cam.clearViewOffset()
     // phones: the formations are small, so damp the camera's sideways drift to keep them in frame
     if (S.narrow) {
       const k = 1 - 0.6 * sstep(1.9, 2.0, s) * (1 - sstep(6.9, 7.0, s))
       pos.x *= k; tgt.x *= k
     }
-    // phones: pull back on the workbench so the title keeps the top of the frame
+    // phones: pull back on the workbench so the four rows fit. No vertical shift here: the band offset above
+    // already centres the bench between the title and the index (a lift on top of it pushed the last row
+    // into the "Tap a material" line).
     if (S.narrow) {
       const w = sstep(7.04, 7.14, s) * (1 - sstep(7.86, 7.96, s))
-      pos.z += 3.2 * w; pos.y += 0.9 * w; tgt.y += 0.9 * w
+      pos.z += 3.2 * w
     }
     // pointer parallax: stronger on the portrait stages, calmer elsewhere
     const stage = Math.max(1 - s / 0.6, s > 10.2 ? 1 : 0)
@@ -157,6 +163,19 @@ export function Film() {
     look.x += S.px * amp * 0.3
     camera.lookAt(look)
     camera.updateMatrixWorld()
+    // the lens is decided once the camera is placed: on phones it depends on where each scene projects.
+    // Measure through the plain lens (no zoom, no offset), then frame.
+    if (cam.zoom !== 1) cam.zoom = 1
+    if (cam.view?.enabled) cam.clearViewOffset(); else cam.updateProjectionMatrix()
+    // (short landscape: the bench sits right of the readout, so the toolkit shifts sideways as well)
+    let offY = band.current * wTkAll, offXp = offX - (tkLeft.current / 2) * wTkAll, zoom = 1
+    // phones: each project scene is fitted (zoom) and centred (offset) in the band between the nav and its copy panel
+    if (S.narrow && wProj > 0) {
+      const f = phoneFrame(s, cam, size.width, size.height)
+      zoom = lerp(1, f.z, wProj); offY += f.oy * wProj; offXp += f.ox * wProj
+    }
+    if (Math.abs(zoom - 1) > 0.001) { cam.zoom = zoom; cam.updateProjectionMatrix() }
+    if (Math.abs(offXp) > 0.5 || Math.abs(offY) > 0.5) cam.setViewOffset(size.width, size.height, offXp, offY, size.width, size.height)
 
     // weather
     const t = clock.elapsedTime
@@ -185,4 +204,77 @@ export function Film() {
     cloudShared.uSunView.value.copy(CLOUD_KEY).transformDirection(camera.matrixWorldInverse)
   }, -1)
   return null
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// phones: frame each project scene in the free space above its copy
+
+/** the core of each formation, in the formations' own units (System.tsx), that the phone framing must keep in view */
+const CORE: [number[], number[]][] = [
+  [[-4.4, -2.0, -1.0], [4.9, 2.0, 1.0]], // Agentic Agile: source, five branches, the checkpoint gate
+  [[-3.15, -2.0, -1.65], [3.15, 2.05, 1.65]], // AI Chatbot: the five layers
+  [[-3.2, -0.9, -2.6], [3.2, 1.6, 2.6]], // ShopperMatch: the job, the inner rings, the rising candidate
+]
+/** E-Parking's lane, car, booth, barrier and camera, in its own fitted units (EParking.tsx) */
+const EP_CORE: [number[], number[]] = [[-1.8, -0.7, -2.1], [3.5, 1.9, 1.1]]
+const _v = new THREE.Vector3(), _m = new THREE.Matrix4()
+
+/** screen extent (px, top-left = 0) of project j's core through the plain lens: [left, top, right, bottom] */
+function span(j: number, s: number, cam: THREE.PerspectiveCamera, W: number, H: number): number[] | null {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (let c = 0; c < 8; c++) {
+    if (j <= 2) {
+      const [a, b] = CORE[j]
+      _v.set(c & 1 ? b[0] : a[0], c & 2 ? b[1] : a[1], c & 4 ? b[2] : a[2]).multiplyScalar(SYS_FIT.scale)
+      _v.z += SYS_Z
+    } else if (j === 3) {
+      // the ship and its network at rest (its bob and its sail-in must not move the framing)
+      const [a, b] = SHIP_BOX
+      shipMatrix(0, _m, SHIP_STATE.fit, s, false)
+      _v.set(c & 1 ? b[0] : a[0], c & 2 ? b[1] : a[1], c & 4 ? b[2] : a[2]).applyMatrix4(_m).multiplyScalar(SYS_FIT.scale)
+      _v.z += SYS_Z
+    } else {
+      const [a, b] = EP_CORE
+      _v.set(c & 1 ? b[0] : a[0], c & 2 ? b[1] : a[1], c & 4 ? b[2] : a[2]).multiplyScalar(EP_FIT.scale)
+      _v.y += 0.3
+      _v.z += EP_Z
+    }
+    _v.applyMatrix4(cam.matrixWorldInverse)
+    if (_v.z > -0.5) return null // behind or at the lens: this scene isn't the one in view
+    _v.applyMatrix4(cam.projectionMatrix)
+    const x = ((_v.x + 1) / 2) * W, y = ((1 - _v.y) / 2) * H
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y)
+  }
+  return [x0, y0, x1, y1]
+}
+
+const _f = { z: 1, ox: 0, oy: 0 }
+/**
+ * Phones: the lens for a project scene. The scene's core is projected through the plain lens, then zoomed to fill the
+ * band between the nav and the copy panel (never past 94% of the width) and offset so it sits centred in that band.
+ * The band follows the panel: large while only the project's title shows, smaller once the description is revealed,
+ * so the scene re-frames continuously as the copy rises and settles. Blends between neighbouring projects as the
+ * formations change. Zoom scales about the frame centre, so with zoom z a point at y moves to H/2 - z(H/2 - y).
+ */
+function phoneFrame(s: number, cam: THREE.PerspectiveCamera, W: number, H: number) {
+  const top = S.bandTop || 72, bottom = S.copyTop > 0 ? S.copyTop + 18 : H * 0.5
+  const bh = Math.max(80, bottom - top), bc = (top + bottom) / 2
+  const at = (k: number, out: { z: number; ox: number; oy: number }) => {
+    const sp = span(Math.max(0, Math.min(4, k)), s, cam, W, H)
+    if (!sp) { out.z = 1; out.ox = 0; out.oy = H * 0.25; return out }
+    const [x0, y0, x1, y1] = sp
+    const z = clamp(Math.min((bh * 0.9) / Math.max(1, y1 - y0), (W * 0.94) / Math.max(1, x1 - x0)), 0.6, 1.7)
+    const cy = (y0 + y1) / 2, cx = (x0 + x1) / 2
+    out.z = z
+    out.oy = H / 2 - z * (H / 2 - cy) - bc
+    out.ox = clamp(z * (cx - W / 2), -W * 0.2, W * 0.2)
+    return out
+  }
+  const x = clamp(s - 2, 0, 5), j = Math.round(x)
+  const t = sstep(j - 0.1, j + 0.1, x)
+  if (t <= 0) return at(j - 1, _f)
+  if (t >= 1) return at(j, _f)
+  const a = at(j - 1, { z: 1, ox: 0, oy: 0 }), b = at(j, { z: 1, ox: 0, oy: 0 })
+  _f.z = lerp(a.z, b.z, t); _f.ox = lerp(a.ox, b.ox, t); _f.oy = lerp(a.oy, b.oy, t)
+  return _f
 }

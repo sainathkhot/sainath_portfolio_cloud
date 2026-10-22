@@ -90,7 +90,8 @@ export function Veil() {
     m.position.copy(cam.position)
     m.quaternion.copy(cam.quaternion)
     m.translateZ(-0.5)
-    const h = 2 * 0.5 * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * 1.08
+    // (oversized for the phone lens: a zoom below 1 and a view offset both show more than the plain frustum)
+    const h = (2 * 0.5 * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * (cam.view?.enabled ? 2.0 : 1.08)) / Math.min(1, cam.zoom)
     m.scale.set(h * cam.aspect, h, 1)
   })
   return <mesh ref={ref} material={mat} renderOrder={1000} frustumCulled={false}><planeGeometry args={[1, 1]} /></mesh>
@@ -98,7 +99,7 @@ export function Veil() {
 
 // Sunlit specks that wrap around the camera, giving the air depth.
 export function Dust() {
-  const { size } = useThree()
+  const { size, viewport } = useThree()
   const count = S.narrow ? 220 : 520
   const geo = useMemo(() => {
     const g = new THREE.BufferGeometry()
@@ -109,9 +110,10 @@ export function Dust() {
   }, [count])
   const mat = useMemo(() => new THREE.ShaderMaterial({
     transparent: true, depthWrite: false,
-    uniforms: { uCam: { value: new THREE.Vector3() }, uTime: { value: 0 }, uPx: { value: size.height }, uWarm: skyU.uWarm, uSpeed: { value: 1 } },
+    // point sizes are in device pixels: scale by the render's pixel ratio so the specks keep their size on any screen
+    uniforms: { uCam: { value: new THREE.Vector3() }, uTime: { value: 0 }, uPx: { value: size.height }, uDpr: { value: 1 }, uWarm: skyU.uWarm, uSpeed: { value: 1 } },
     vertexShader: /* glsl */ `
-      uniform vec3 uCam; uniform float uTime; uniform float uPx; uniform float uSpeed; varying float vA;
+      uniform vec3 uCam; uniform float uTime; uniform float uPx; uniform float uDpr; uniform float uSpeed; varying float vA;
       void main(){
         vec3 p = position + vec3(uTime * 0.12 * uSpeed, sin(uTime * 0.3 + position.x) * 0.2, 0.0);
         vec3 box = vec3(24.0, 14.0, 24.0);
@@ -119,7 +121,7 @@ export function Dust() {
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mv;
         float d = -mv.z;
-        gl_PointSize = clamp(uPx * 0.0035 * (8.0 / d), 1.0, 6.0);
+        gl_PointSize = clamp(uPx * 0.0035 * (8.0 / d), 1.0, 6.0) * uDpr;
         vA = smoothstep(1.0, 3.0, d) * (1.0 - smoothstep(9.0, 12.0, d));
       }`,
     fragmentShader: /* glsl */ `
@@ -130,6 +132,8 @@ export function Dust() {
   const t = useRef({ acc: 0, speed: 1 })
   useFrame(({ camera }, dt) => {
     mat.uniforms.uCam.value.copy(camera.position)
+    mat.uniforms.uPx.value = size.height
+    mat.uniforms.uDpr.value = viewport.dpr
     t.current.speed += ((S.atmos >= 0 ? 3.5 : 1) - t.current.speed) * 0.04
     if (!S.reduced) t.current.acc += Math.min(dt, 0.05) * t.current.speed
     mat.uniforms.uTime.value = t.current.acc
